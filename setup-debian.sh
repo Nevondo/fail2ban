@@ -1,7 +1,5 @@
 #!/bin/sh
-apt-get install python git -y 
-git clone git@gitlab.hosted4u.de:devtek/fail2ban.git
-cd fail2ban
+apt-get install python -y
 python setup.py install
 touch /var/log/fail2ban.log
 
