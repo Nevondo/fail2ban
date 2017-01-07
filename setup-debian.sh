@@ -1,5 +1,5 @@
 #!/bin/sh
-apt-get install python -y
+apt-get install python3 python3-pyinotify python3-systemd -y
 python setup.py install
 touch /var/log/fail2ban.log
 
