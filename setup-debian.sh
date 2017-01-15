@@ -9,9 +9,9 @@ email=$(\
           --inputbox "Gebe deine E-Mail ein mit der Fail2ban senden soll." 8 40 \
   3>&1 1>&2 2>&3 3>&- \
 )
-sed 's/^%EMAIL%$/$(email) /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
+sed 's/^%EMAIL%$/$email /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
 
-dialog --title "Fail2ban Blocklist Einstellungen" --yesno "Blocklist konfigurieren" 8 40
+dialog --title "Fail2ban Blocklist Einstellungen" --yesno "Blocklist.de konfigurieren?" 8 40
 response=$?
 
 if [ $response = 0 ]
@@ -21,7 +21,7 @@ if [ $response = 0 ]
 						--inputbox "Gebe deinen API Key von Blocklist.de ein." 8 40 \
 				3>&1 1>&2 2>&3 3>&- \
 			)
-			sed 's/^%BLOCKLIST%$/$(blocklist) /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
+			sed 's/^%BLOCKLIST%$/$blocklist /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
 			sed 's/^%ACTION%$/action_blocklist_de /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
         else
         sed 's/^%ACTION%$/action_mwl /' /etc/fail2ban/jail.local &> /etc/fail2ban/jail.local
@@ -29,6 +29,6 @@ fi
 
 cp files/debian-initd /etc/init.d/fail2ban
 update-rc.d fail2ban defaults
-service fail2ban stop
+service fail2ban restart
 
 
