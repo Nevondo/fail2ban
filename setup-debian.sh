@@ -24,7 +24,7 @@ if [ $response = 0 ]
 			sed -i "s/%BLOCKLISTKEY%/$blocklist/g" /etc/fail2ban/jail.local
 			sed -i 's/%ACTION%/action_blocklist_de/g' /etc/fail2ban/jail.local
         else
-		sed -i 's/%ACTION%/action_mwl/g' /etc/fail2ban/jail.local
+		sed -i 's/%ACTION%/action_/g' /etc/fail2ban/jail.local
 fi
 
 cp files/debian-initd /etc/init.d/fail2ban
