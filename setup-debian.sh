@@ -9,7 +9,7 @@ email=$(\
           --inputbox "Gebe deine E-Mail ein mit der Fail2ban senden soll." 8 40 \
   3>&1 1>&2 2>&3 3>&- \
 )
-sed -i 's/%EMAIL%/$(email)/g' /etc/fail2ban/jail.local
+sed -i "s/%EMAIL%/$email/g" /etc/fail2ban/jail.local
 
 dialog --title "Fail2ban Blocklist Einstellungen" --yesno "Blocklist.de konfigurieren?" 8 40
 response=$?
@@ -21,7 +21,7 @@ if [ $response = 0 ]
 						--inputbox "Gebe deinen API Key von Blocklist.de ein." 8 40 \
 				3>&1 1>&2 2>&3 3>&- \
 			)
-			sed -i 's/%BLOCKLISTKEY%/$(blocklist)/g' /etc/fail2ban/jail.local
+			sed -i "s/%BLOCKLISTKEY%/$blocklist/g" /etc/fail2ban/jail.local
 			sed -i 's/%ACTION%/action_blocklist_de/g' /etc/fail2ban/jail.local
         else
 		sed -i 's/%ACTION%/action_mwl/g' /etc/fail2ban/jail.local
