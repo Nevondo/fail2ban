@@ -13,7 +13,7 @@ enabled = false
 filter = %(__name__)s
 
 destemail = fail2ban@blocklist.de 
-sender = EMAIL
+sender = %EMAIL%
 mta = sendmail
 protocol = tcp
 chain = INPUT
@@ -21,7 +21,7 @@ port = 0:65535
 
 banaction = iptables-allports
 
-blocklist_de_apikey  = BLOCKLISTKEY
+blocklist_de_apikey  = %BLOCKLISTKEY%
 action_blocklist_de  = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
 						blocklist_de[email="%(sender)s", service=%(filter)s, apikey="%(blocklist_de_apikey)s"]
 
@@ -36,7 +36,7 @@ action_xarf = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(po
 action_cf_mwl = cloudflare[cfuser="%(cfemail)s", cftoken="%(cfapikey)s"]
                 %(mta)s-whois-lines[name=%(__name__)s, dest="%(destemail)s", logpath=%(logpath)s, chain="%(chain)s"]
 
-action = %(action_blocklist_de)s
+action = %(%ACTION%)s
 
 
 [sshd]
