@@ -11,6 +11,7 @@ fail2banDir="/etc/fail2ban"
                 rm -R /etc/fail2ban
                 rm /etc/init.d/fail2ban
             else
+                clear
                 echo "Installation vom Benutzer abgebrochen! Fail2ban ist schon installiert!"
                 exit
             fi
@@ -18,7 +19,6 @@ fail2banDir="/etc/fail2ban"
 }
 
 function checkDependencies {
-    clear
     python3='echo dpkg --get-selections | grep python3'
     if [[ $python3 = "" ]]; then
        apt-get install python3 python3-pyinotify python3-systemd -y
@@ -34,7 +34,6 @@ function checkDependencies {
 }
 
 function installFail2ban {
-    clear
     python setup.py install
     touch /var/log/fail2ban.log
     cp config/jail.local /etc/fail2ban/
@@ -76,7 +75,5 @@ fi
 checkInstallation
 checkDependencies
 installFail2ban
-clear
 echo "Fail2ban wurde erfolgreich installiert!"
-sleep 5
 
