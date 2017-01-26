@@ -33,6 +33,7 @@ function checkDependencies {
     fi
 }
 
+
 function installFail2ban {
     python setup.py install
     touch /var/log/fail2ban.log
@@ -66,6 +67,15 @@ service fail2ban restart
 clear
 service fail2ban status
 }
+
+if [ "`id -u`" != "0" ]; then
+    echo "Wechsle zu dem Root Benutzer!"
+    su root
+	fi
+if [ "`id -u`" != "0" ]; then
+    echo "Nicht als Rootbenutzer ausgeführt, Abgebrochen!"
+    exit
+	fi
 
 checkdialog=$(command -v dialog)
 if [[ $checkdialog = "" ]]; then
