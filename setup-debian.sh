@@ -10,7 +10,6 @@ fail2banDir="/etc/fail2ban"
                 apt-get purge fail2ban
                 rm -R /etc/fail2ban
                 rm /etc/init.d/fail2ban
-                installFail2ban
             else
                 echo "Installation vom Benutzer abgebrochen! Fail2ban ist schon installiert!"
                 exit
@@ -19,6 +18,7 @@ fail2banDir="/etc/fail2ban"
 }
 
 function checkDependencies {
+    clear
     python3='echo dpkg --get-selections | grep python3'
     if [[ $python3 = "" ]]; then
        apt-get install python3 python3-pyinotify python3-systemd -y
