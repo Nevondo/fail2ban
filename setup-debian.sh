@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function checkInstallation {
-    if[ -d "/etc/fail2ban"] then
+    if ! [ -d /etc/fail2ban ]; then
         dialog --title "Fail2ban gefunden!" --yesno "Es scheint so als wäre Fail2ban schon installiert? Soll es deinstalliert und die neue Version installiert werden?" 8 40
         response=$?
 
@@ -14,7 +14,7 @@ function checkInstallation {
                 echo "Installation vom Benutzer abgebrochen! Fail2ban ist schon installiert!"
                 exit
             fi
-
+fi
 }
 
 function checkDependencies {
@@ -67,8 +67,8 @@ update-rc.d fail2ban defaults
 service fail2ban restart
 }
 
-
-if ! [ "dpkg --get-selections | grep dialog" ]; then
+dialog="dpkg --get-selections | grep dialog"
+if ! [ $dialog == "" ]; then
     apt-get install dialog
 fi
 
