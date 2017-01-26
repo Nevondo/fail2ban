@@ -34,6 +34,7 @@ function checkDependencies {
 }
 
 function installFail2ban {
+    clear
     python setup.py install
     touch /var/log/fail2ban.log
     cp config/jail.local /etc/fail2ban/
@@ -63,6 +64,8 @@ function installFail2ban {
 cp files/debian-initd /etc/init.d/fail2ban
 update-rc.d fail2ban defaults
 service fail2ban restart
+clear
+service fail2ban status
 }
 
 checkdialog=$(command -v dialog)
@@ -73,6 +76,7 @@ fi
 checkInstallation
 checkDependencies
 installFail2ban
+clear
 echo "Fail2ban wurde erfolgreich installiert!"
 sleep 5
 
