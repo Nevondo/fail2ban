@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function checkInstallation {
-    if ![ -d /etc/fail2ban ]; then
+    if  ! -d /etc/fail2ban ; then
         dialog --title "Fail2ban gefunden!" --yesno "Es scheint so als wäre Fail2ban schon installiert? Soll es deinstalliert und die neue Version installiert werden?" 8 40
         response=$?
 
@@ -19,15 +19,15 @@ fi
 
 function checkDependencies {
     python3="dpkg --get-selections | grep python3"
-    if ![ $python3 = "" ]; then
+    if [ $python3 = "" ]; then
        apt-get install python3 python3-pyinotify python3-systemd -y
     fi
     pyinotify="dpkg --get-selections | grep pyinotify"
-     if ![ $pyinotify = ""  ]; then
+     if [ $pyinotify = ""  ]; then
        apt-get install python3-pyinotify -y
     fi
     systemd="dpkg --get-selections | grep systemd"
-     if ![  $systemd = ""   ]; then
+     if [  $systemd = ""   ]; then
        apt-get install python3-systemd -y
     fi
 }
