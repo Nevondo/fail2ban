@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 function checkInstallation {
     if[ -d "/etc/fail2ban"] then
@@ -14,6 +14,7 @@ function checkInstallation {
                 echo "Installation vom Benutzer abgebrochen! Fail2ban ist schon installiert!"
                 exit
             fi
+
 }
 
 function checkDependencies {
