@@ -1,7 +1,8 @@
 #!/bin/bash
 
 function checkInstallation {
-    if [ -d "/etc/fail2ban" ]; then
+fail2banDir="/etc/fail2ban"
+    if [ -d "$fail2banDir" ]; then
         dialog --title "Fail2ban gefunden!" --yesno "Es scheint so als wäre Fail2ban schon installiert? Soll es deinstalliert und die neue Version installiert werden?" 8 40
         response=$?
 
@@ -19,15 +20,15 @@ function checkInstallation {
 
 function checkDependencies {
     python3='echo dpkg --get-selections | grep python3'
-    if [ $python3 = "" ]; then
+    if [[ $python3 = "" ]]; then
        apt-get install python3 python3-pyinotify python3-systemd -y
     fi
     pyinotify='echo dpkg --get-selections | grep pyinotify'
-     if [ $pyinotify = ""  ]; then
+     if [[ $pyinotify = "" ]]; then
        apt-get install python3-pyinotify -y
     fi
     systemd='echo dpkg --get-selections | grep systemd'
-     if [  $systemd = ""   ]; then
+     if [[  $systemd = "" ]]; then
        apt-get install python3-systemd -y
     fi
 }
@@ -64,8 +65,8 @@ update-rc.d fail2ban defaults
 service fail2ban restart
 }
 
-dialogTest='echo /usr/bin/dpkg --get-selections | grep dialog'
-if [ $dialogTest == "" ]; then
+checkdialog=$(command -v dialog)
+if [[ $checkdialog = "" ]]; then
     apt-get install dialog
 fi
 
