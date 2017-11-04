@@ -41,12 +41,12 @@ from optparse import OptionParser, Option
 from ConfigParser import NoOptionError, NoSectionError, MissingSectionHeaderError
 
 try: # pragma: no cover
+	from systemd import journal
 	from ..server.filtersystemd import FilterSystemd
 except ImportError:
-	FilterSystemd = None
+	journal = None
 
 from ..version import version
-from .jailreader import JailReader
 from .filterreader import FilterReader
 from ..server.filter import Filter, FileContainer
 from ..server.failregex import Regex, RegexException
@@ -83,7 +83,7 @@ def pprint_list(l, header=None):
 		s = ''
 	output( s + "|  " + "\n|  ".join(l) + '\n`-' )
 
-def journal_lines_gen(flt, myjournal): # pragma: no cover
+def journal_lines_gen(myjournal): # pragma: no cover
 	while True:
 		try:
 			entry = myjournal.get_next()
@@ -91,7 +91,7 @@ def journal_lines_gen(flt, myjournal): # pragma: no cover
 			continue
 		if not entry:
 			break
-		yield flt.formatJournalEntry(entry)
+		yield FilterSystemd.formatJournalEntry(entry)
 
 def get_opt_parser():
 	# use module docstring for help output
@@ -600,22 +600,25 @@ class Fail2banRegex(object):
 			except IOError as e: # pragma: no cover
 				output( e )
 				return False
-		elif cmd_log.startswith("systemd-journal"): # pragma: no cover
-			if not FilterSystemd:
+		elif cmd_log == "systemd-journal": # pragma: no cover
+			if not journal:
 				output( "Error: systemd library not found. Exiting..." )
 				return False
-			output( "Use         systemd journal" )
-			output( "Use         encoding : %s" % self._encoding )
-			backend, beArgs = JailReader.extractOptions(cmd_log)
-			flt = FilterSystemd(None, **beArgs)
-			flt.setLogEncoding(self._encoding)
-			myjournal = flt.getJournalReader()
+			myjournal = journal.Reader(converters={'__CURSOR': lambda x: x})
 			journalmatch = self._journalmatch
 			self.setDatePattern(None)
 			if journalmatch:
-				flt.addJournalMatch(journalmatch)
+				try:
+					for element in journalmatch:
+						if element == "+":
+							myjournal.add_disjunction()
+						else:
+							myjournal.add_match(element)
+				except ValueError:
+					output( "Error: Invalid journalmatch: %s" % shortstr(" ".join(journalmatch)) )
+					return False
 			output( "Use    journal match : %s" % " ".join(journalmatch) )
-			test_lines = journal_lines_gen(flt, myjournal)
+			test_lines = journal_lines_gen(myjournal)
 		else:
 			# if single line parsing (without buffering)
 			if self._filter.getMaxLines() <= 1:
