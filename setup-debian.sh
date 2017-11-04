@@ -19,23 +19,35 @@ fail2banDir="/etc/fail2ban"
 }
 
 function checkDependencies {
-    python3='echo dpkg --get-selections | grep python3'
-    if [[ $python3 = "" ]]; then
+    dpkg --get-selections | grep '^python3' >/dev/null
+    if [[ $? = 1 ]]; then
        apt-get install python3 python3-pyinotify python3-systemd -y
     fi
-    pyinotify='echo dpkg --get-selections | grep pyinotify'
-     if [[ $pyinotify = "" ]]; then
+    dpkg --get-selections | grep '^pyinotify' >/dev/null
+     if [[ $? = 1 ]]; then
        apt-get install python3-pyinotify -y
     fi
-    systemd='echo dpkg --get-selections | grep systemd'
-     if [[  $systemd = "" ]]; then
+    dpkg --get-selections | grep '^systemd' >/dev/null
+     if [[  $? = 1 ]]; then
        apt-get install python3-systemd -y
     fi
 }
 
 
 function installFail2ban {
-    python setup.py install
+	if ! command -v python >/dev/null 2>&1
+	then
+		if command -v python3 >/dev/null 2>&1
+		then
+			echo "Alias python"
+			ln -s /usr/bin/python3 /usr/bin/python
+		else
+			echo "Can't find python. Abort."
+			exit 1
+		fi
+	fi
+
+    ./setup.py install
     touch /var/log/fail2ban.log
     cp config/jail.local /etc/fail2ban/
 
