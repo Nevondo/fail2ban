@@ -308,6 +308,12 @@ class Server:
 		return self.__jails[name].idle
 	
 	# Filter
+	def setIgnoreSelf(self, name, value):
+		self.__jails[name].filter.ignoreSelf = value
+	
+	def getIgnoreSelf(self, name):
+		return self.__jails[name].filter.ignoreSelf
+
 	def addIgnoreIP(self, name, ip):
 		self.__jails[name].filter.addIgnoreIP(ip)
 	
@@ -373,12 +379,26 @@ class Server:
 	def getDatePattern(self, name):
 		return self.__jails[name].filter.getDatePattern()
 
+	def setLogTimeZone(self, name, tz):
+		self.__jails[name].filter.setLogTimeZone(tz)
+
+	def getLogTimeZone(self, name):
+		return self.__jails[name].filter.getLogTimeZone()
+
 	def setIgnoreCommand(self, name, value):
 		self.__jails[name].filter.setIgnoreCommand(value)
 
 	def getIgnoreCommand(self, name):
 		return self.__jails[name].filter.getIgnoreCommand()
 
+	def setPrefRegex(self, name, value):
+		flt = self.__jails[name].filter
+		logSys.debug("  prefregex: %r", value)
+		flt.prefRegex = value
+
+	def getPrefRegex(self, name):
+		return self.__jails[name].filter.prefRegex
+	
 	def addFailRegex(self, name, value, multiple=False):
 		flt = self.__jails[name].filter
 		if not multiple: value = (value,)
@@ -624,9 +644,9 @@ class Server:
 			if self.__syslogSocket == syslogsocket:
 				return True
 			self.__syslogSocket = syslogsocket
-			# Conditionally reload, logtarget depends on socket path when SYSLOG
-			return self.__logTarget != "SYSLOG"\
-				   or self.setLogTarget(self.__logTarget)
+		# Conditionally reload, logtarget depends on socket path when SYSLOG
+		return self.__logTarget != "SYSLOG"\
+			   or self.setLogTarget(self.__logTarget)
 
 	def getLogTarget(self):
 		with self.__loggingLock:

@@ -28,12 +28,12 @@ import re
 import shutil
 import tempfile
 import unittest
-from ..client.configreader import ConfigReader, ConfigReaderUnshared
+from ..client.configreader import ConfigReader, ConfigReaderUnshared, NoSectionError
 from ..client import configparserinc
 from ..client.jailreader import JailReader
 from ..client.filterreader import FilterReader
 from ..client.jailsreader import JailsReader
-from ..client.actionreader import ActionReader
+from ..client.actionreader import ActionReader, CommandAction
 from ..client.configurator import Configurator
 from ..server.mytime import MyTime
 from ..version import version
@@ -162,6 +162,40 @@ c = d ;in line comment
 		self.assertEqual(self.c.get('DEFAULT', 'b'), 'a')
 		self.assertEqual(self.c.get('DEFAULT', 'c'), 'd')
 
+	def testTargetedSectionOptions(self):
+		self.assertFalse(self.c.read('g'))	# nothing is there yet
+		self._write("g.conf", value=None, content="""
+[DEFAULT]
+a = def-a
+b = def-b,a:`%(a)s`
+c = def-c,b:"%(b)s"
+d = def-d-b:"%(known/b)s"
+
+[jail]
+a = jail-a-%(test/a)s
+b = jail-b-%(test/b)s
+y = %(test/y)s
+
+[test]
+a = test-a-%(default/a)s
+b = test-b-%(known/b)s
+x = %(test/x)s
+y = %(jail/y)s
+""")
+		self.assertTrue(self.c.read('g'))
+		self.assertEqual(self.c.get('test', 'a'), 'test-a-def-a')
+		self.assertEqual(self.c.get('test', 'b'), 'test-b-def-b,a:`test-a-def-a`')
+		self.assertEqual(self.c.get('jail', 'a'), 'jail-a-test-a-def-a')
+		self.assertEqual(self.c.get('jail', 'b'), 'jail-b-test-b-def-b,a:`jail-a-test-a-def-a`')
+		self.assertEqual(self.c.get('jail', 'c'), 'def-c,b:"jail-b-test-b-def-b,a:`jail-a-test-a-def-a`"')
+		self.assertEqual(self.c.get('jail', 'd'), 'def-d-b:"def-b,a:`jail-a-test-a-def-a`"')
+		self.assertEqual(self.c.get('test', 'c'), 'def-c,b:"test-b-def-b,a:`test-a-def-a`"')
+		self.assertEqual(self.c.get('test', 'd'),  'def-d-b:"def-b,a:`test-a-def-a`"')
+		self.assertEqual(self.c.get('DEFAULT', 'c'), 'def-c,b:"def-b,a:`def-a`"')
+		self.assertEqual(self.c.get('DEFAULT', 'd'), 'def-d-b:"def-b,a:`def-a`"')
+		self.assertRaises(Exception, self.c.get, 'test', 'x')
+		self.assertRaises(Exception, self.c.get, 'jail', 'y')
+
 
 class JailReaderTest(LogCaptureTestCase):
 
@@ -195,6 +229,14 @@ class JailReaderTest(LogCaptureTestCase):
 		self.assertFalse(jail.getOptions())
 		self.assertTrue(jail.isEnabled())
 		self.assertLogged("Invalid action definition 'joho[foo'")
+
+	def testJailLogTimeZone(self):
+		jail = JailReader('tz_correct', basedir=IMPERFECT_CONFIG,
+			share_config=IMPERFECT_CONFIG_SHARE_CFG)
+		self.assertTrue(jail.read())
+		self.assertTrue(jail.getOptions())
+		self.assertTrue(jail.isEnabled())
+		self.assertEqual(jail.options['logtimezone'], 'UTC+0200')
 
 	def testJailFilterBrokenDef(self):
 		jail = JailReader('brokenfilterdef', basedir=IMPERFECT_CONFIG,
@@ -317,7 +359,17 @@ class JailReaderTest(LogCaptureTestCase):
 		self.assertLogged('File %s is a dangling link, thus cannot be monitored' % f2)
 		self.assertEqual(JailReader._glob(os.path.join(d, 'nonexisting')), [])
 
-		
+	def testCommonFunction(self):
+		c = ConfigReader(share_config={})
+		# test common functionalities (no shared, without read of config):
+		self.assertEqual(c.sections(), [])
+		self.assertFalse(c.has_section('test'))
+		self.assertRaises(NoSectionError, c.merge_section, 'test', {})
+		self.assertRaises(NoSectionError, c.options, 'test')
+		self.assertRaises(NoSectionError, c.get, 'test', 'any')
+		self.assertRaises(NoSectionError, c.getOptions, 'test', {})
+
+
 class FilterReaderTest(unittest.TestCase):
 
 	def __init__(self, *args, **kwargs):
@@ -357,7 +409,7 @@ class FilterReaderTest(unittest.TestCase):
 
 		# Add sort as configreader uses dictionary and therefore order
 		# is unreliable
-		self.assertEqual(sorted(filterReader.convert()), sorted(output))
+		self.assertSortedEqual(filterReader.convert(), output)
 
 		filterReader = FilterReader("testcase01", "testcase01", {'maxlines': "5"},
 		  share_config=TEST_FILES_DIR_SHARE_CFG, basedir=TEST_FILES_DIR)
@@ -365,7 +417,7 @@ class FilterReaderTest(unittest.TestCase):
 		#filterReader.getOptions(["failregex", "ignoreregex"])
 		filterReader.getOptions(None)
 		output[-1][-1] = "5"
-		self.assertEqual(sorted(filterReader.convert()), sorted(output))
+		self.assertSortedEqual(filterReader.convert(), output)
 
 	def testFilterReaderSubstitionDefault(self):
 		output = [['set', 'jailname', 'addfailregex', 'to=sweet@example.com fromip=<IP>']]
@@ -374,7 +426,7 @@ class FilterReaderTest(unittest.TestCase):
 		filterReader.read()
 		filterReader.getOptions(None)
 		c = filterReader.convert()
-		self.assertEqual(sorted(c), sorted(output))
+		self.assertSortedEqual(c, output)
 
 	def testFilterReaderSubstitionSet(self):
 		output = [['set', 'jailname', 'addfailregex', 'to=sour@example.com fromip=<IP>']]
@@ -383,7 +435,7 @@ class FilterReaderTest(unittest.TestCase):
 		filterReader.read()
 		filterReader.getOptions(None)
 		c = filterReader.convert()
-		self.assertEqual(sorted(c), sorted(output))
+		self.assertSortedEqual(c, output)
 
 	def testFilterReaderSubstitionKnown(self):
 		output = [['set', 'jailname', 'addfailregex', 'to=test,sweet@example.com,test2,sweet@example.com fromip=<IP>']]
@@ -394,7 +446,7 @@ class FilterReaderTest(unittest.TestCase):
 		filterReader.read()
 		filterReader.getOptions(None)
 		c = filterReader.convert()
-		self.assertEqual(sorted(c), sorted(output))
+		self.assertSortedEqual(c, output)
 
 	def testFilterReaderSubstitionFail(self):
 		# directly subst the same var :
@@ -503,8 +555,8 @@ class JailsReaderTest(LogCaptureTestCase):
 		self.assertRaises(ValueError, jails.convert)
 		comm_commands = jails.convert(allow_no_files=True)
 		self.maxDiff = None
-		self.assertEqual(sorted(comm_commands),
-			sorted([['add', 'emptyaction', 'auto'],
+		self.assertSortedEqual(comm_commands,
+			[['add', 'emptyaction', 'auto'],
 			 ['add', 'test-known-interp', 'auto'],
 			 ['multi-set', 'test-known-interp', 'addfailregex', [
 			   'failure test 1 (filter.d/test.conf) <HOST>',
@@ -519,14 +571,19 @@ class JailsReaderTest(LogCaptureTestCase):
 			 ['set', 'brokenaction', 'addaction', 'brokenaction'],
 			 ['multi-set', 'brokenaction', 'action', 'brokenaction', [
 				 ['actionban', 'hit with big stick <ip>'],
-				 ['actname', 'brokenaction']
+				 ['actname', 'brokenaction'],
+				 ['name', 'brokenaction']
 			 ]],
 			 ['add', 'parse_to_end_of_jail.conf', 'auto'],
 			 ['set', 'parse_to_end_of_jail.conf', 'addfailregex', '<IP>'],
+			 ['set', 'tz_correct', 'addfailregex', '<IP>'],
+			 ['set', 'tz_correct', 'logtimezone', 'UTC+0200'],
 			 ['start', 'emptyaction'],
 			 ['start', 'missinglogfiles'],
 			 ['start', 'brokenaction'],
 			 ['start', 'parse_to_end_of_jail.conf'],
+		         ['add', 'tz_correct', 'auto'],
+			 ['start', 'tz_correct'],
 			 ['config-error',
 				"Jail 'brokenactiondef' skipped, because of wrong configuration: Invalid action definition 'joho[foo'"],
 			 ['config-error',
@@ -535,7 +592,7 @@ class JailsReaderTest(LogCaptureTestCase):
 				"Jail 'missingaction' skipped, because of wrong configuration: Unable to read action 'noactionfileforthisaction'"],
 			 ['config-error',
 				"Jail 'missingbitsjail' skipped, because of wrong configuration: Unable to read the filter 'catchallthebadies'"],
-			 ]))
+			 ])
 		self.assertLogged("Errors in jail 'missingbitsjail'.")
 		self.assertNotLogged("Skipping...")
 		self.assertLogged("No file(s) found for glob /weapons/of/mass/destruction")
@@ -556,6 +613,16 @@ class JailsReaderTest(LogCaptureTestCase):
 					# all must have some actionban defined
 					self.assertTrue(actionReader._opts.get('actionban', '').strip(),
 						msg="Action file %r is lacking actionban" % actionConfig)
+					# test name of jail is set in options (also if not supplied within parameters):
+					opts = actionReader.getCombined(
+						ignore=CommandAction._escapedTags | set(('timeout', 'bantime')))
+					self.assertEqual(opts.get('name'), 'TEST',
+						msg="Action file %r does not contains jail-name 'f2b-TEST'" % actionConfig)
+					# and the name is substituted (test several actions surely contains name-interpolation):
+					if actionName in ('pf', 'iptables-allports', 'iptables-multiport'):
+						#print('****', actionName, opts.get('actionstart', ''))
+						self.assertIn('f2b-TEST', opts.get('actionstart', ''),
+							msg="Action file %r: interpolation of actionstart does not contains jail-name 'f2b-TEST'" % actionConfig)
 				self.assertIn('Init', actionReader.sections(),
 						msg="Action file %r is lacking [Init] section" % actionConfig)
 
@@ -712,6 +779,7 @@ class JailsReaderTest(LogCaptureTestCase):
 			self.assertEqual(opts['socket'], '/var/run/fail2ban/fail2ban.sock')
 			self.assertEqual(opts['pidfile'], '/var/run/fail2ban/fail2ban.pid')
 
+			configurator.readAll()
 			configurator.getOptions()
 			configurator.convertToProtocol()
 			commands = configurator.getConfigStream()
@@ -733,7 +801,7 @@ class JailsReaderTest(LogCaptureTestCase):
 
 			# and there is logging information left to be passed into the
 			# server
-			self.assertEqual(sorted(commands),
+			self.assertSortedEqual(commands,
 							 [['set', 'dbfile',
 								'/var/lib/fail2ban/fail2ban.sqlite3'],
 							  ['set', 'dbpurgeage', '1d'],

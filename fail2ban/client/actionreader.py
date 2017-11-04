@@ -28,6 +28,7 @@ import os
 
 from .configreader import DefinitionInitConfigReader
 from ..helpers import getLogger
+from ..server.action import CommandAction
 
 # Gets the instance of the logger.
 logSys = getLogger(__name__)
@@ -37,7 +38,9 @@ class ActionReader(DefinitionInitConfigReader):
 
 	_configOpts = {
 		"actionstart": ["string", None],
+		"actionstart_on_demand": ["string", None],
 		"actionstop": ["string", None],
+		"actionflush": ["string", None],
 		"actionreload": ["string", None],
 		"actioncheck": ["string", None],
 		"actionrepair": ["string", None],
@@ -51,6 +54,9 @@ class ActionReader(DefinitionInitConfigReader):
 		if actname is None:
 			actname = file_
 			initOpts["actname"] = actname
+		# always supply jail name as name parameter if not specified in options:
+		if initOpts.get("name") is None:
+			initOpts["name"] = jailName
 		self._name = actname
 		DefinitionInitConfigReader.__init__(
 			self, file_, jailName, initOpts, **kwargs)
@@ -69,21 +75,24 @@ class ActionReader(DefinitionInitConfigReader):
 		return self._name
 
 	def convert(self):
-		opts = self.getCombined(ignore=('timeout', 'bantime'))
+		opts = self.getCombined(
+			ignore=CommandAction._escapedTags | set(('timeout', 'bantime')))
 		# type-convert only after combined (otherwise boolean converting prevents substitution):
-		if opts.get('norestored'):
-			opts['norestored'] = self._convert_to_boolean(opts['norestored'])
+		for o in ('norestored', 'actionstart_on_demand'):
+			if opts.get(o):
+				opts[o] = self._convert_to_boolean(opts[o])
+		
 		# stream-convert:
 		head = ["set", self._jailName]
 		stream = list()
 		stream.append(head + ["addaction", self._name])
 		multi = []
 		for opt, optval in opts.iteritems():
-			if opt in self._configOpts:
+			if opt in self._configOpts and not opt.startswith('known/'):
 				multi.append([opt, optval])
 		if self._initOpts:
 			for opt, optval in self._initOpts.iteritems():
-				if opt not in self._configOpts:
+				if opt not in self._configOpts and not opt.startswith('known/'):
 					multi.append([opt, optval])
 		if len(multi) > 1:
 			stream.append(["multi-set", self._jailName, "action", self._name, multi])

@@ -1,17 +1,17 @@
 [Unit]
 Description=Fail2Ban Service
 Documentation=man:fail2ban(1)
-After=network.target iptables.service firewalld.service
-PartOf=iptables.service firewalld.service
+After=network.target iptables.service firewalld.service ip6tables.service ipset.service
+PartOf=iptables.service firewalld.service ip6tables.service ipset.service
 
 [Service]
 Type=simple
 ExecStartPre=/bin/mkdir -p /var/run/fail2ban
-ExecStart=/usr/bin/fail2ban-server -xf start
+ExecStart=@BINDIR@/fail2ban-server -xf start
 # if should be logged in systemd journal, use following line or set logtarget to stdout in fail2ban.local
-# ExecStart=/usr/bin/fail2ban-server -xf --logtarget=stdout start
-ExecStop=/usr/bin/fail2ban-client stop
-ExecReload=/usr/bin/fail2ban-client reload
+# ExecStart=@BINDIR@/fail2ban-server -xf --logtarget=stdout start
+ExecStop=@BINDIR@/fail2ban-client stop
+ExecReload=@BINDIR@/fail2ban-client reload
 PIDFile=/var/run/fail2ban/fail2ban.pid
 Restart=on-failure
 RestartPreventExitStatus=0 255

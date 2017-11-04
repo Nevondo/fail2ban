@@ -102,6 +102,7 @@ class Fail2banCmdLine():
 		output("    --logtarget <FILE>|STDOUT|STDERR|SYSLOG")
 		output("    --syslogsocket auto|<FILE>")
 		output("    -d                      dump configuration. For debugging")
+		output("    --dp, --dump-pretty     dump the configuration using more human readable representation")
 		output("    -t, --test              test configuration (can be also specified with start parameters)")
 		output("    -i                      interactive mode")
 		output("    -v                      increase verbosity")
@@ -111,6 +112,7 @@ class Fail2banCmdLine():
 		output("    -f                      start server in foreground")
 		output("    --async                 start server in async mode (for internal usage only, don't read configuration)")
 		output("    --timeout               timeout to wait for the server (for internal usage only, don't read configuration)")
+		output("    --str2sec <STRING>      convert time abbreviation format to seconds")
 		output("    -h, --help              display this help message")
 		output("    -V, --version           print the version")
 
@@ -136,8 +138,8 @@ class Fail2banCmdLine():
 				self._conf["pidfile"] = opt[1]
 			elif o.startswith("--log") or o.startswith("--sys"):
 				self._conf[ o[2:] ] = opt[1]
-			elif o == "-d":
-				self._conf["dump"] = True
+			elif o in ["-d", "--dp", "--dump-pretty"]:
+				self._conf["dump"] = True if o == "-d" else 2
 			elif o == "-t" or o == "--test":
 				self.cleanConfOnly = True
 				self._conf["test"] = True
@@ -155,9 +157,13 @@ class Fail2banCmdLine():
 				self._conf["background"] = False
 			elif o == "--async":
 				self._conf["async"] = True
-			elif o == "-timeout":
-				from ..mytime import MyTime
+			elif o == "--timeout":
+				from ..server.mytime import MyTime
 				self._conf["timeout"] = MyTime.str2seconds(opt[1])
+			elif o == "--str2sec":
+				from ..server.mytime import MyTime
+				output(MyTime.str2seconds(opt[1]))
+				return True
 			elif o in ["-h", "--help"]:
 				self.dispUsage()
 				return True
@@ -179,7 +185,8 @@ class Fail2banCmdLine():
 			# Reads the command line options.
 			try:
 				cmdOpts = 'hc:s:p:xfbdtviqV'
-				cmdLongOpts = ['loglevel=', 'logtarget=', 'syslogsocket=', 'test', 'async', 'timeout=', 'help', 'version']
+				cmdLongOpts = ['loglevel=', 'logtarget=', 'syslogsocket=', 'test', 'async',
+					'timeout=', 'str2sec=', 'help', 'version', 'dp', '--dump-pretty']
 				optList, self._args = getopt.getopt(self._argv[1:], cmdOpts, cmdLongOpts)
 			except getopt.GetoptError:
 				self.dispUsage()
@@ -235,7 +242,10 @@ class Fail2banCmdLine():
 				if readcfg:
 					ret, stream = self.readConfig()
 					readcfg = False
-				self.dumpConfig(stream)
+				if stream is not None:
+					self.dumpConfig(stream, self._conf["dump"] == 2)
+				else: # pragma: no cover
+					output("ERROR: The configuration stream failed because of the invalid syntax.")
 				if not self._conf.get("test", False):
 					return ret
 
@@ -270,7 +280,8 @@ class Fail2banCmdLine():
 			self.configurator.readAll()
 			ret = self.configurator.getOptions(jail, self._conf, 
 				ignoreWrong=not self.cleanConfOnly)
-			self.configurator.convertToProtocol()
+			self.configurator.convertToProtocol(
+				allow_no_files=self._conf.get("dump", False))
 			stream = self.configurator.getConfigStream()
 		except Exception as e:
 			logSys.error("Failed during configuration: %s" % e)
@@ -278,9 +289,15 @@ class Fail2banCmdLine():
 		return ret, stream
 
 	@staticmethod
-	def dumpConfig(cmd):
+	def dumpConfig(cmd, pretty=False):
+		if pretty:
+			from pprint import pformat
+			def _output(s):
+				output(pformat(s, width=1000, indent=2))
+		else:
+			_output = output
 		for c in cmd:
-			output(c)
+			_output(c)
 		return True
 
 	#

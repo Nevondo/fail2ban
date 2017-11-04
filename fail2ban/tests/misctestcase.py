@@ -101,6 +101,22 @@ class SetupTest(unittest.TestCase):
 				"Seems to be running with python distribution %s"
 				" -- install can be tested only with system distribution %s" % (str(tuple(sys.version_info)), sysVer))
 
+	def testSetupInstallDryRun(self):
+		if not self.setup:
+			return			  # if verbose skip didn't work out
+		tmp = tempfile.mkdtemp()
+		# suppress stdout (and stderr) if not heavydebug
+		supdbgout = ' >/dev/null 2>&1' if unittest.F2B.log_level >= logging.DEBUG else '' # HEAVYDEBUG
+		try:
+			# try dry-run:
+			os.system("%s %s --dry-run install --disable-2to3 --root=%s%s"
+					  % (sys.executable, self.setup , tmp, supdbgout))
+			# check nothing was created:
+			self.assertTrue(not os.listdir(tmp))
+		finally:
+			# clean up
+			shutil.rmtree(tmp)
+
 	def testSetupInstallRoot(self):
 		if not self.setup:
 			return			  # if verbose skip didn't work out
@@ -108,8 +124,8 @@ class SetupTest(unittest.TestCase):
 		# suppress stdout (and stderr) if not heavydebug
 		supdbgout = ' >/dev/null' if unittest.F2B.log_level >= logging.DEBUG else '' # HEAVYDEBUG
 		try:
-			os.system("%s %s install --disable-2to3 --dry-run --root=%s%s"
-					  % (sys.executable, self.setup, tmp, supdbgout))
+			self.assertEqual(os.system("%s %s install --disable-2to3 --root=%s%s"
+					  % (sys.executable, self.setup, tmp, supdbgout)), 0)
 
 			def strippath(l):
 				return [x[len(tmp)+1:] for x in l]
@@ -285,6 +301,25 @@ class TestsUtilsTest(LogCaptureTestCase):
 		self.assertDictEqual({'A': [1, 2]}, {'A': [1, 2]})
 		self.assertRaises(AssertionError, self.assertDictEqual, 
 			{'A': [1, 2]}, {'A': [2, 1]})
+		## assertSortedEqual:
+		self.assertSortedEqual(['A', 'B'], ['B', 'A'])
+		self.assertSortedEqual([['A', 'B']], [['B', 'A']], level=2)
+		self.assertSortedEqual([['A', 'B']], [['B', 'A']], nestedOnly=False)
+		self.assertRaises(AssertionError, lambda: self.assertSortedEqual(
+			[['A', 'B']], [['B', 'A']], level=1, nestedOnly=True))
+		self.assertSortedEqual({'A': ['A', 'B']}, {'A': ['B', 'A']}, nestedOnly=False)
+		self.assertRaises(AssertionError, lambda: self.assertSortedEqual(
+			{'A': ['A', 'B']}, {'A': ['B', 'A']}, level=1, nestedOnly=True))
+		self.assertSortedEqual(['Z', {'A': ['B', 'C'], 'B': ['E', 'F']}], [{'B': ['F', 'E'], 'A': ['C', 'B']}, 'Z'],
+			nestedOnly=False)
+		self.assertSortedEqual(['Z', {'A': ['B', 'C'], 'B': ['E', 'F']}], [{'B': ['F', 'E'], 'A': ['C', 'B']}, 'Z'],
+			level=-1)
+		self.assertRaises(AssertionError, lambda: self.assertSortedEqual(
+			['Z', {'A': ['B', 'C'], 'B': ['E', 'F']}], [{'B': ['F', 'E'], 'A': ['C', 'B']}, 'Z']))
+		self._testAssertionErrorRE(r"\['A'\] != \['C', 'B'\]",
+			self.assertSortedEqual, ['A'], ['C', 'B'])
+		self._testAssertionErrorRE(r"\['A', 'B'\] != \['B', 'C'\]",
+			self.assertSortedEqual, ['A', 'B'], ['C', 'B'])
 
 	def testFormatterWithTraceBack(self):
 		strout = StringIO()

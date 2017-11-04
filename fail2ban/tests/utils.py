@@ -37,7 +37,7 @@ import unittest
 from cStringIO import StringIO
 from functools import wraps
 
-from ..helpers import getLogger, str2LogLevel, getVerbosityFormat
+from ..helpers import getLogger, str2LogLevel, getVerbosityFormat, uni_decode
 from ..server.ipdns import DNSUtils
 from ..server.mytime import MyTime
 from ..server.utils import Utils
@@ -262,17 +262,25 @@ def initTests(opts):
 
 	# persistently set time zone to CET (used in zone-related test-cases),
 	# yoh: we need to adjust TZ to match the one used by Cyril so all the timestamps match
-	os.environ['TZ'] = 'Europe/Zurich'
+	# This offset corresponds to Europe/Zurich timezone.  Specifying it
+	# explicitly allows to avoid requiring tzdata package to be installed during
+	# testing.   See https://bugs.debian.org/855920 for more information
+	os.environ['TZ'] = 'CET-01CEST-02,M3.5.0,M10.5.0'
 	time.tzset()
 	# set alternate now for time related test cases:
 	MyTime.setAlternateNow(TEST_NOW)
 
 	# precache all invalid ip's (TEST-NET-1, ..., TEST-NET-3 according to RFC 5737):
 	c = DNSUtils.CACHE_ipToName
-	for i in xrange(255):
+	# increase max count and max time (too many entries, long time testing):
+	c.setOptions(maxCount=10000, maxTime=5*60)
+	for i in xrange(256):
 		c.set('192.0.2.%s' % i, None)
 		c.set('198.51.100.%s' % i, None)
 		c.set('203.0.113.%s' % i, None)
+		c.set('2001:db8::%s' %i, 'test-host')
+	# some legal ips used in our test cases (prevent slow dns-resolving and failures if will be changed later):
+	c.set('87.142.124.10', 'test-host')
 	if unittest.F2B.no_network: # pragma: no cover
 		# precache all wrong dns to ip's used in test cases:
 		c = DNSUtils.CACHE_nameToIp
@@ -473,8 +481,8 @@ def gatherTests(regexps=None, opts=None):
 # Forwards compatibility of unittest.TestCase for some early python versions
 #
 
+import difflib, pprint
 if not hasattr(unittest.TestCase, 'assertDictEqual'):
-	import difflib, pprint
 	def assertDictEqual(self, d1, d2, msg=None):
 		self.assert_(isinstance(d1, dict), 'First argument is not a dictionary')
 		self.assert_(isinstance(d2, dict), 'Second argument is not a dictionary')
@@ -486,6 +494,53 @@ if not hasattr(unittest.TestCase, 'assertDictEqual'):
 			msg = msg or (standardMsg + diff)
 			self.fail(msg)
 	unittest.TestCase.assertDictEqual = assertDictEqual
+
+def assertSortedEqual(self, a, b, level=1, nestedOnly=True, key=repr, msg=None):
+	"""Compare complex elements (like dict, list or tuple) in sorted order until
+	level 0 not reached (initial level = -1 meant all levels),
+	or if nestedOnly set to True and some of the objects still contains nested lists or dicts.
+	"""
+	# used to recognize having element as nested dict, list or tuple:
+	def _is_nested(v):
+		if isinstance(v, dict):
+			return any(isinstance(v, (dict, list, tuple)) for v in v.itervalues())
+		return any(isinstance(v, (dict, list, tuple)) for v in v)
+	# level comparison routine:
+	def _assertSortedEqual(a, b, level, nestedOnly, key):
+		# first the lengths:
+		if len(a) != len(b):
+			raise ValueError('%r != %r' % (a, b))
+		# if not allow sorting of nested - just compare directly:
+		if not level and (nestedOnly and (not _is_nested(a) and not _is_nested(b))):
+			if a == b:
+				return
+			raise ValueError('%r != %r' % (a, b))
+		if isinstance(a, dict) and isinstance(b, dict): # compare dict's:
+			for k, v1 in a.iteritems():
+				v2 = b[k]
+				if isinstance(v1, (dict, list, tuple)) and isinstance(v2, (dict, list, tuple)):
+					_assertSortedEqual(v1, v2, level-1 if level != 0 else 0, nestedOnly, key)
+				elif v1 != v2:
+					raise ValueError('%r != %r' % (a, b))
+		else: # list, tuple, something iterable:
+			a = sorted(a, key=key)
+			b = sorted(b, key=key)
+			for v1, v2 in zip(a, b):
+				if isinstance(v1, (dict, list, tuple)) and isinstance(v2, (dict, list, tuple)):
+					_assertSortedEqual(v1, v2, level-1 if level != 0 else 0, nestedOnly, key)
+				elif v1 != v2:
+					raise ValueError('%r != %r' % (a, b))
+	# compare and produce assertion-error by exception:
+	try:
+		_assertSortedEqual(a, b, level, nestedOnly, key)
+	except Exception as e:
+		standardMsg = e.args[0] if isinstance(e, ValueError) else (str(e) + "\nwithin:")
+		diff = ('\n' + '\n'.join(difflib.ndiff(
+			pprint.pformat(a).splitlines(),
+			pprint.pformat(b).splitlines())))
+		msg = msg or (standardMsg + diff)
+		self.fail(msg)
+unittest.TestCase.assertSortedEqual = assertSortedEqual
 
 if not hasattr(unittest.TestCase, 'assertRaisesRegexp'):
 	def assertRaisesRegexp(self, exccls, regexp, fun, *args, **kwargs):
@@ -526,12 +581,21 @@ if True: ## if not hasattr(unittest.TestCase, 'assertIn'):
 _org_setUp = unittest.TestCase.setUp
 def _customSetUp(self):
 	# print('=='*10, self)
-	if unittest.F2B.log_level <= logging.DEBUG: # so if DEBUG etc -- show them (and log it in travis)!
-		print("")
+	# so if DEBUG etc -- show them (and log it in travis)!
+	if unittest.F2B.log_level <= logging.DEBUG: # pragma: no cover
+		sys.stderr.write("\n")
 		logSys.debug('='*10 + ' %s ' + '='*20, self.id())
 	_org_setUp(self)
+	if unittest.F2B.verbosity > 2: # pragma: no cover
+		self.__startTime = time.time()
+
+_org_tearDown = unittest.TestCase.tearDown
+def _customTearDown(self):
+	if unittest.F2B.verbosity > 2: # pragma: no cover
+		sys.stderr.write(" %.3fs -- " % (time.time() - self.__startTime,))
 
 unittest.TestCase.setUp = _customSetUp
+unittest.TestCase.tearDown = _customTearDown
 
 
 class LogCaptureTestCase(unittest.TestCase):

@@ -108,11 +108,11 @@ class Transmitter:
 			value = command[1:]
 			# if all ips:
 			if len(value) == 1 and value[0] == "--all":
-				self.__server.setUnbanIP()
-				return
+				return self.__server.setUnbanIP()
+			cnt = 0
 			for value in value:
-				self.__server.setUnbanIP(None, value)
-			return None
+				cnt += self.__server.setUnbanIP(None, value)
+			return cnt
 		elif command[0] == "echo":
 			return command[1:]
 		elif command[0] == "sleep":
@@ -181,6 +181,10 @@ class Transmitter:
 				raise Exception("Invalid idle option, must be 'on' or 'off'")
 			return self.__server.getIdleJail(name)
 		# Filter
+		elif command[1] == "ignoreself":
+			value = command[2]
+			self.__server.setIgnoreSelf(name, value)
+			return self.__server.getIgnoreSelf(name)
 		elif command[1] == "addignoreip":
 			value = command[2]
 			self.__server.addIgnoreIP(name, value)
@@ -221,6 +225,10 @@ class Transmitter:
 			value = command[2:]
 			self.__server.delJournalMatch(name, value)
 			return self.__server.getJournalMatch(name)
+		elif command[1] == "prefregex":
+			value = command[2]
+			self.__server.setPrefRegex(name, value)
+			return self.__server.getPrefRegex(name)
 		elif command[1] == "addfailregex":
 			value = command[2]
 			self.__server.addFailRegex(name, value, multiple=multiple)
@@ -253,6 +261,10 @@ class Transmitter:
 			value = command[2]
 			self.__server.setDatePattern(name, value)
 			return self.__server.getDatePattern(name)
+		elif command[1] == "logtimezone":
+			value = command[2]
+			self.__server.setLogTimeZone(name, value)
+			return self.__server.getLogTimeZone(name)
 		elif command[1] == "maxretry":
 			value = command[2]
 			self.__server.setMaxRetry(name, int(value))
@@ -337,10 +349,14 @@ class Transmitter:
 			return self.__server.getLogEncoding(name)
 		elif command[1] == "journalmatch": # pragma: systemd no cover
 			return self.__server.getJournalMatch(name)
+		elif command[1] == "ignoreself":
+			return self.__server.getIgnoreSelf(name)
 		elif command[1] == "ignoreip":
 			return self.__server.getIgnoreIP(name)
 		elif command[1] == "ignorecommand":
 			return self.__server.getIgnoreCommand(name)
+		elif command[1] == "prefregex":
+			return self.__server.getPrefRegex(name)
 		elif command[1] == "failregex":
 			return self.__server.getFailRegex(name)
 		elif command[1] == "ignoreregex":
@@ -351,6 +367,8 @@ class Transmitter:
 			return self.__server.getFindTime(name)
 		elif command[1] == "datepattern":
 			return self.__server.getDatePattern(name)
+		elif command[1] == "logtimezone":
+			return self.__server.getLogTimeZone(name)
 		elif command[1] == "maxretry":
 			return self.__server.getMaxRetry(name)
 		elif command[1] == "maxlines":

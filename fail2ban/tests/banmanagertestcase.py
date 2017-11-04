@@ -38,7 +38,7 @@ class AddFailure(unittest.TestCase):
 
 	def tearDown(self):
 		"""Call after every test case."""
-		pass
+		super(AddFailure, self).tearDown()
 
 	def testAdd(self):
 		self.assertTrue(self.__banManager.addBanTicket(self.__ticket))
@@ -147,7 +147,7 @@ class StatusExtendedCymruInfo(unittest.TestCase):
 
 	def tearDown(self):
 		"""Call after every test case."""
-		pass
+		super(StatusExtendedCymruInfo, self).tearDown()
 
 	available = True, None
 
@@ -198,13 +198,12 @@ class StatusExtendedCymruInfo(unittest.TestCase):
 						   "country": ["nxdomain"],
 						   "rir": ["nxdomain"]})
 
-		# even for private IPs ASNs defined
 		# Since it outputs for all active tickets we would get previous results
 		# and new ones
-		ticket = BanTicket("10.0.0.0", 1167606000.0)
+		ticket = BanTicket("8.0.0.0", 1167606000.0)
 		self.assertTrue(self.__banManager.addBanTicket(ticket))
 		cymru_info = self._getBanListExtendedCymruInfo()
-		self.assertDictEqual(dict((k, sorted(v)) for k, v in cymru_info.iteritems()),
-						  {"asn": sorted(["nxdomain", "4565",]),
-						   "country": sorted(["nxdomain", "unknown"]),
-						   "rir": sorted(["nxdomain", "other"])})
+		self.assertSortedEqual(cymru_info,
+						  {"asn": ["nxdomain", "3356",],
+						   "country": ["nxdomain", "US"],
+						   "rir": ["nxdomain", "arin"]}, level=-1, key=str)
