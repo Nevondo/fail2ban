@@ -23,7 +23,7 @@ banaction = iptables-allports
 
 blocklist_de_apikey  = %BLOCKLISTKEY%
 action_blocklist_de  = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
-						blocklist_de[email="%(sender)s", service=%(filter)s, apikey="%(blocklist_de_apikey)s"]
+						blocklist_de[email="%(sender)s", service=%(__name__)s, apikey="%(blocklist_de_apikey)s", logpath=%(logpath)s]
 
 action_ = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
 action_mw = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
