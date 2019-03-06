@@ -44,6 +44,8 @@ config/action.d/netscaler.conf
 config/action.d/nftables-allports.conf
 config/action.d/nftables-common.conf
 config/action.d/nftables-multiport.conf
+config/action.d/nginx-block-map.conf
+config/action.d/npf.conf
 config/action.d/nsupdate.conf
 config/action.d/osx-afctl.conf
 config/action.d/osx-ipfw.conf
@@ -216,6 +218,7 @@ fail2ban/tests/actiontestcase.py
 fail2ban/tests/banmanagertestcase.py
 fail2ban/tests/clientbeautifiertestcase.py
 fail2ban/tests/clientreadertestcase.py
+fail2ban/tests/config/action.d/action.conf
 fail2ban/tests/config/action.d/brokenaction.conf
 fail2ban/tests/config/fail2ban.conf
 fail2ban/tests/config/filter.d/simple.conf
@@ -389,6 +392,8 @@ kill-server
 man/fail2ban.1
 man/fail2ban-client.1
 man/fail2ban-client.h2m
+man/fail2ban-python.1
+man/fail2ban-python.h2m
 man/fail2ban-regex.1
 man/fail2ban-regex.h2m
 man/fail2ban-server.1

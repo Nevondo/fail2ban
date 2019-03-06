@@ -87,7 +87,7 @@ class FilterSystemd(JournalFilter): # pragma: systemd no cover
 			args['files'] = list(set(files))
 
 		try:
-			args['flags'] = kwargs.pop('journalflags')
+			args['flags'] = int(kwargs.pop('journalflags'))
 		except KeyError:
 			pass
 
@@ -292,12 +292,8 @@ class FilterSystemd(JournalFilter): # pragma: systemd no cover
 					else:
 						break
 				if self.__modified:
-					try:
-						while True:
-							ticket = self.failManager.toBan()
-							self.jail.putFailTicket(ticket)
-					except FailManagerEmpty:
-						self.failManager.cleanup(MyTime.time())
+					self.performBan()
+					self.__modified = 0
 			except Exception as e: # pragma: no cover
 				if not self.active: # if not active - error by stop...
 					break

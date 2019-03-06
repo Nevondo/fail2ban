@@ -29,7 +29,7 @@ import os
 from ConfigParser import NoOptionError, NoSectionError
 
 from .configparserinc import sys, SafeConfigParserWithIncludes, logLevel
-from ..helpers import getLogger, _merge_dicts, substituteRecursiveTags
+from ..helpers import getLogger, _as_bool, _merge_dicts, substituteRecursiveTags
 
 # Gets the instance of the logger.
 logSys = getLogger(__name__)
@@ -239,8 +239,10 @@ class ConfigReaderUnshared(SafeConfigParserWithIncludes):
 			try:
 				if opttype == "bool":
 					v = self.getboolean(sec, optname)
+					if v is None: continue
 				elif opttype == "int":
 					v = self.getint(sec, optname)
+					if v is None: continue
 				else:
 					v = self.get(sec, optname, vars=pOptions)
 				values[optname] = v
@@ -339,7 +341,7 @@ class DefinitionInitConfigReader(ConfigReader):
 
 
 	def _convert_to_boolean(self, value):
-		return value.lower() in ("1", "yes", "true", "on")
+		return _as_bool(value)
 	
 	def getCombOption(self, optname):
 		"""Get combined definition option (as string) using pre-set and init
@@ -351,7 +353,7 @@ class DefinitionInitConfigReader(ConfigReader):
 			return self._defCache[optname]
 		except KeyError:
 			try:
-				v = self.get("Definition", optname, vars=self._pOpts)
+				v = self._cfg.get_ex("Definition", optname, vars=self._pOpts)
 			except (NoSectionError, NoOptionError, ValueError):
 				v = None
 			self._defCache[optname] = v

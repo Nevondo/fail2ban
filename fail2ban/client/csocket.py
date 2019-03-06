@@ -43,27 +43,39 @@ class CSocket:
 		self.__csock.connect(sock)
 
 	def __del__(self):
-		self.close(False)
+		self.close()
 	
 	def send(self, msg, nonblocking=False, timeout=None):
 		# Convert every list member to string
-		obj = dumps(map(
-			lambda m: str(m) if not isinstance(m, (list, dict, set)) else m, msg),
-		  HIGHEST_PROTOCOL)
+		obj = dumps(map(CSocket.convert, msg), HIGHEST_PROTOCOL)
 		self.__csock.send(obj + CSPROTO.END)
 		return self.receive(self.__csock, nonblocking, timeout)
 
 	def settimeout(self, timeout):
 		self.__csock.settimeout(timeout if timeout != -1 else self.__deftout)
 
-	def close(self, sendEnd=True):
+	def close(self):
 		if not self.__csock:
 			return
-		if sendEnd:
+		try:
 			self.__csock.sendall(CSPROTO.CLOSE + CSPROTO.END)
-		self.__csock.close()
+			self.__csock.shutdown(socket.SHUT_RDWR)
+		except socket.error: # pragma: no cover - normally unreachable
+			pass
+		try:
+			self.__csock.close()
+		except socket.error: # pragma: no cover - normally unreachable
+			pass
 		self.__csock = None
 	
+	@staticmethod
+	def convert(m):
+		"""Convert every "unexpected" member of message to string"""
+		if isinstance(m, (basestring, bool, int, float, list, dict, set)):
+			return m
+		else: # pragma: no cover
+			return str(m)
+
 	@staticmethod
 	def receive(sock, nonblocking=False, timeout=None):
 		msg = CSPROTO.EMPTY

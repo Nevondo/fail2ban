@@ -117,12 +117,7 @@ class FilterPoll(FileFilter):
 
 				self.ticks += 1
 				if self.__modified:
-					try:
-						while True:
-							ticket = self.failManager.toBan()
-							self.jail.putFailTicket(ticket)
-					except FailManagerEmpty:
-						self.failManager.cleanup(MyTime.time())
+					self.performBan()
 					self.__modified = False
 			except Exception as e: # pragma: no cover
 				if not self.active: # if not active - error by stop...
@@ -158,7 +153,7 @@ class FilterPoll(FileFilter):
 			self.__prevStats[filename] = stats
 			return True
 		except Exception as e:
-			# stil alive (may be deleted because multi-threaded):
+			# still alive (may be deleted because multi-threaded):
 			if not self.getLog(filename) or self.__prevStats.get(filename) is None:
 				logSys.warning("Log %r seems to be down: %s", filename, e)
 				return False

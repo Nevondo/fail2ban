@@ -127,9 +127,7 @@ Comments: use '#' for comment lines and '; ' (space is important) for inline com
 
 .SH "FAIL2BAN CONFIGURATION FILE(S) (\fIfail2ban.conf\fB)"
 
-These files have one section, [Definition].
-
-The items that can be set are:
+The items that can be set in section [Definition] are:
 .TP
 .B loglevel
 verbosity level of log output: CRITICAL, ERROR, WARNING, NOTICE, INFO, DEBUG, TRACEDEBUG, HEAVYDEBUG or corresponding numeric value (50-5). Default: ERROR (equal 40)
@@ -162,6 +160,15 @@ This defines where the persistent data for fail2ban is stored. This persistent d
 Database purge age in seconds. Default: 86400 (24hours)
 .br
 This sets the age at which bans should be purged from the database.
+
+.RE
+The config parameters of section [Thread] are:
+
+.TP
+.B stacksize
+Stack size of each thread in fail2ban. Default: 0 (platform or configured default)
+.br
+This specifies the stack size (in KiB) to be used for subsequently created threads, and must be 0 or a positive integer value of at least 32.
 
 .SH "JAIL CONFIGURATION FILE(S) (\fIjail.conf\fB)"
 The following options are applicable to any jail. They appear in a section specifying the jail name or in the \fI[DEFAULT]\fR section which defines default values to be used if not specified in the individual section.
@@ -233,7 +240,19 @@ list of IPs not to ban. They can include a DNS resp. CIDR mask too. The option a
 command that is executed to determine if the current candidate IP for banning (or failure-ID for raw IDs) should not be banned. The option affects additionally to \fBignoreself\fR and \fBignoreip\fR and will be first executed if both don't hit.
 .br
 IP will not be banned if command returns successfully (exit code 0).
-Like ACTION FILES, tags like <ip> are can be included in the ignorecommand value and will be substituted before execution. Currently only <ip> is supported however more will be added later.
+Like ACTION FILES, tags like <ip> are can be included in the ignorecommand value and will be substituted before execution.
+.TP
+.B ignorecache
+provide cache parameters (default disabled) for ignore failure check (caching of the result from `ignoreip`, `ignoreself` and `ignorecommand`), syntax:
+
+.RS
+.nf
+        ignorecache = key="<F-USER>@<ip-host>", max-count=100, max-time=5m
+        ignorecommand = if [ "<F-USER>" = "technical" ] && [ "<ip-host>" = "my-host.example.com" ]; then exit 0; fi;
+                        exit 1
+.fi
+This will cache the result of \fBignorecommand\fR (does not call it repeatedly) for 5 minutes (cache time) for maximal 100 entries (cache size), using values substituted like "user@host" as cache-keys.  Set option \fBignorecache\fR to empty value disables the cache.
+.RE
 .TP
 .B bantime
 effective ban duration (in seconds or time abbreviation format).

@@ -78,6 +78,7 @@ class FilterPyinotify(FileFilter):
 		self.__modified = False
 		# Pyinotify watch manager
 		self.__monitor = pyinotify.WatchManager()
+		self.__notifier = None
 		self.__watchFiles = dict()
 		self.__watchDirs = dict()
 		self.__pending = dict()
@@ -123,7 +124,7 @@ class FilterPyinotify(FileFilter):
 			self._addPending(path, event)
 			return
 		# do nothing if idle:
-		if self.idle:
+		if self.idle: # pragma: no cover (too sporadic to get idle in callback)
 			return
 		# be sure we process a file:
 		if not isWF:
@@ -139,12 +140,7 @@ class FilterPyinotify(FileFilter):
 		"""
 		if not self.idle:
 			self.getFailures(path)
-			try:
-				while True:
-					ticket = self.failManager.toBan()
-					self.jail.putFailTicket(ticket)
-			except FailManagerEmpty:
-				self.failManager.cleanup(MyTime.time())
+			self.performBan()
 			self.__modified = False
 
 	def _addPending(self, path, reason, isDir=False):
@@ -225,22 +221,27 @@ class FilterPyinotify(FileFilter):
 		self.__watchFiles.update(wd)
 		logSys.debug("Added file watcher for %s", path)
 
+	def _delWatch(self, wdInt):
+		m = self.__monitor
+		try:
+			if m.get_path(wdInt) is not None:
+				wd = m.rm_watch(wdInt, quiet=False)
+				return True
+		except pyinotify.WatchManagerError as e:
+			if m.get_path(wdInt) is not None and not str(e).endswith("(EINVAL)"): # prama: no cover
+				logSys.debug("Remove watch causes: %s", e)
+				raise e
+		return False
+
 	def _delFileWatcher(self, path):
 		try:
 			wdInt = self.__watchFiles.pop(path)
-			if self.__monitor.get_path(wdInt) is not None:
-				wd = self.__monitor.rm_watch(wdInt)
-			else: # pragma: no cover
+			if not self._delWatch(wdInt):
 				logSys.debug("Non-existing file watcher %r for file %s", wdInt, path)
-				wd = {wdInt: 1}
-			if wd[wdInt]:
-				logSys.debug("Removed file watcher for %s", path)
-				return True
+			logSys.debug("Removed file watcher for %s", path)
+			return True
 		except KeyError: # pragma: no cover
 			pass
-			# EnvironmentError is parent of IOError, OSError, etc.
-		except EnvironmentError as e: # pragma: no cover (normally unreached)
-			logSys.error("Remove file monitor for %s causes %s", path, e)
 		return False
 
 	def _addDirWatcher(self, path_dir):
@@ -256,16 +257,11 @@ class FilterPyinotify(FileFilter):
 		# Remove watches for the directory:
 		try:
 			wdInt = self.__watchDirs.pop(path_dir)
-			if self.__monitor.get_path(wdInt) is not None:
-				self.__monitor.rm_watch(wdInt)
-			else: # pragma: no cover
+			if not self._delWatch(wdInt): # pragma: no cover
 				logSys.debug("Non-existing file watcher %r for directory %s", wdInt, path_dir)
+			logSys.debug("Removed monitor for the parent directory %s", path_dir)
 		except KeyError: # pragma: no cover
 			pass
-			# EnvironmentError is parent of IOError, OSError, etc.
-		except EnvironmentError as e: # pragma: no cover (normally unreached)
-			logSys.error("Remove monitor for the parent directory %s causes %s", path_dir, e)
-		logSys.debug("Removed monitor for the parent directory %s", path_dir)
 
 	##
 	# Add a log file path
@@ -373,8 +369,11 @@ class FilterPyinotify(FileFilter):
 	def stop(self):
 		# stop filter thread:
 		super(FilterPyinotify, self).stop()
-		if self.__notifier: # stop the notifier
-			self.__notifier.stop()
+		try:
+			if self.__notifier: # stop the notifier
+				self.__notifier.stop()
+		except AttributeError: # pragma: no cover
+			if self.__notifier: raise
 
 	##
 	# Wait for exit with cleanup.

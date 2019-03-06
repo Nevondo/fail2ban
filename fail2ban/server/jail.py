@@ -29,8 +29,7 @@ import random
 import Queue
 
 from .actions import Actions
-from ..client.jailreader import JailReader
-from ..helpers import getLogger, MyTime
+from ..helpers import getLogger, _as_bool, extractOptions, MyTime
 from .mytime import MyTime
 
 # Gets the instance of the logger.
@@ -90,7 +89,7 @@ class Jail(object):
 		return "%s(%r)" % (self.__class__.__name__, self.name)
 
 	def _setBackend(self, backend):
-		backend, beArgs = JailReader.extractOptions(backend)
+		backend, beArgs = extractOptions(backend)
 		backend = backend.lower()		# to assure consistent matching
 
 		backends = self._BACKENDS
@@ -224,8 +223,7 @@ class Jail(object):
 			del be[opt]
 		logSys.info('Set banTime.%s = %s', opt, value)
 		if opt == 'increment':
-			if isinstance(value, str):
-				be[opt] = value.lower() in ("yes", "true", "ok", "1")
+			be[opt] = _as_bool(value)
 			if be.get(opt) and self.database is None:
 				logSys.warning("ban time increment is not available as long jail database is not set")
 		if opt in ['maxtime', 'rndtime']:
@@ -264,16 +262,27 @@ class Jail(object):
 			return self._banExtra.get(opt, None)
 		return self._banExtra
 
-	def restoreCurrentBans(self):
+	def getMaxBanTime(self):
+		"""Returns max possible ban-time of jail.
+		"""
+		return self._banExtra.get("maxtime", -1) \
+			if self._banExtra.get('increment') else self.actions.getBanTime()
+
+	def restoreCurrentBans(self, correctBanTime=True):
 		"""Restore any previous valid bans from the database.
 		"""
 		try:
 			if self.database is not None:
-				forbantime = None;
-				# use ban time as search time if we have not enabled a increasing:
-				if not self.getBanTimeExtra('increment'):
+				if self._banExtra.get('increment'):
+					forbantime = None;
+					if correctBanTime:
+						correctBanTime = self.getMaxBanTime()
+				else:
+					# use ban time as search time if we have not enabled a increasing:
 					forbantime = self.actions.getBanTime()
-				for ticket in self.database.getCurrentBans(jail=self, forbantime=forbantime):
+				for ticket in self.database.getCurrentBans(jail=self, forbantime=forbantime,
+					correctBanTime=correctBanTime
+				):
 					try:
 						#logSys.debug('restored ticket: %s', ticket)
 						if self.filter.inIgnoreIPList(ticket.getIP(), log_ignore=True): continue

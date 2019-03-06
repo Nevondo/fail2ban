@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 
-from ..version import version
+from ..version import version, normVersion
 from ..protocol import printFormatted
 from ..helpers import getLogger, str2LogLevel, getVerbosityFormat
 
@@ -78,12 +78,11 @@ class Fail2banCmdLine():
 		for o in obj.__dict__:
 			self.__dict__[o] = obj.__dict__[o]
 
-	def dispVersion(self):
-		output("Fail2Ban v" + version)
-		output("")
-		output("Copyright (c) 2004-2008 Cyril Jaquier, 2008- Fail2Ban Contributors")
-		output("Copyright of modifications held by their respective authors.")
-		output("Licensed under the GNU General Public License v2 (GPL).")
+	def dispVersion(self, short=False):
+		if not short:
+			output("Fail2Ban v" + version)
+		else:
+			output(normVersion())
 
 	def dispUsage(self):
 		""" Prints Fail2Ban command line options and exits
@@ -99,7 +98,7 @@ class Fail2banCmdLine():
 		output("    -s <FILE>               socket path")
 		output("    -p <FILE>               pidfile path")
 		output("    --loglevel <LEVEL>      logging level")
-		output("    --logtarget <FILE>|STDOUT|STDERR|SYSLOG")
+		output("    --logtarget <TARGET>    logging target, use file-name or stdout, stderr, syslog or sysout.")
 		output("    --syslogsocket auto|<FILE>")
 		output("    -d                      dump configuration. For debugging")
 		output("    --dp, --dump-pretty     dump the configuration using more human readable representation")
@@ -114,7 +113,7 @@ class Fail2banCmdLine():
 		output("    --timeout               timeout to wait for the server (for internal usage only, don't read configuration)")
 		output("    --str2sec <STRING>      convert time abbreviation format to seconds")
 		output("    -h, --help              display this help message")
-		output("    -V, --version           print the version")
+		output("    -V, --version           print the version (-V returns machine-readable short format)")
 
 		if not caller.endswith('server'):
 			output("")
@@ -168,7 +167,7 @@ class Fail2banCmdLine():
 				self.dispUsage()
 				return True
 			elif o in ["-V", "--version"]:
-				self.dispVersion()
+				self.dispVersion(o == "-V")
 				return True
 		return None
 

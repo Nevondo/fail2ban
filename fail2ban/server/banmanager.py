@@ -102,9 +102,22 @@ class BanManager:
 	#
 	# @return IP list
 	
-	def getBanList(self):
+	def getBanList(self, ordered=False, withTime=False):
 		with self.__lock:
-			return self.__banList.keys()
+			if not ordered:
+				return self.__banList.keys()
+			lst = []
+			for ticket in self.__banList.itervalues():
+				eob = ticket.getEndOfBanTime(self.__banTime)
+				lst.append((ticket,eob))
+			lst.sort(key=lambda t: t[1])
+			t2s = MyTime.time2str
+			if withTime:
+				return ['%s \t%s + %d = %s' % (
+						t[0].getID(), 
+						t2s(t[0].getTime()), t[0].getBanTime(self.__banTime), t2s(t[1])
+					) for t in lst]
+			return [t[0].getID() for t in lst]
 
 	##
 	# Returns a iterator to ban list (used in reload, so idle).
@@ -156,7 +169,7 @@ class BanManager:
 		# get cymru info:
 		try:
 			for ip in banIPs:
-				# Reference: http://www.team-cymru.org/Services/ip-to-asn.html#dns
+				# Reference: https://www.team-cymru.com/IP-ASN-mapping.html#dns
 				question = ip.getPTR(
 					"origin.asn.cymru.com" if ip.isIPv4
 					else "origin6.asn.cymru.com"
@@ -166,15 +179,21 @@ class BanManager:
 					answers = resolver.query(question, "TXT")
 					if not answers:
 						raise ValueError("No data retrieved")
+					asns = set()
+					countries = set()
+					rirs = set()
 					for rdata in answers:
 						asn, net, country, rir, changed =\
 							[answer.strip("'\" ") for answer in rdata.to_text().split("|")]
 						asn = self.handleBlankResult(asn)
 						country = self.handleBlankResult(country)
 						rir = self.handleBlankResult(rir)
-						return_dict["asn"].append(self.handleBlankResult(asn))
-						return_dict["country"].append(self.handleBlankResult(country))
-						return_dict["rir"].append(self.handleBlankResult(rir))
+						asns.add(self.handleBlankResult(asn))
+						countries.add(self.handleBlankResult(country))
+						rirs.add(self.handleBlankResult(rir))
+					return_dict["asn"].append(', '.join(sorted(asns)))
+					return_dict["country"].append(', '.join(sorted(countries)))
+					return_dict["rir"].append(', '.join(sorted(rirs)))
 				except dns.resolver.NXDOMAIN:
 					return_dict["asn"].append("nxdomain")
 					return_dict["country"].append("nxdomain")
