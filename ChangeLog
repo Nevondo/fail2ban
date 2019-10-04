@@ -59,28 +59,72 @@ ver. 0.11.0-dev-0 (20??/??/??) - development nightly edition
 * added new command `fail2ban-client get <JAIL> banip ?sep-char|--with-time?` to get the banned ip addresses (gh-1916).
 
 
-ver. 0.10.4-dev-1 (20??/??/??) - development edition
 ver. 0.10.5-dev-1 (20??/??/??) - development edition
 -----------
 
 ### Fixes
+* [compatibility] systemd backend: default flags changed to SYSTEM_ONLY(4), fixed in gh-2444 in order to ignore
+  user session files per default, so could prevent "Too many open files" errors on a lot of user sessions (see gh-2392)
+* [grave] fixed parsing of multi-line filters (`maxlines` > 1) together with systemd backend,
+  now systemd-filter replaces newlines in message from systemd journal with `\n` (otherwise 
+  multi-line parsing may be broken, because removal of matched string from multi-line buffer window
+  is confused by such extra new-lines, so they are retained and got matched on every followed 
+  message, see gh-2431)
+* [stability] prevent race condition - no unban if the bans occur continuously (gh-2410);
+  now an unban-check will happen not later than 10 tickets get banned regardless there are
+  still active bans available (precedence of ban over unban-check is 10 now)
 * fixed read of included config-files (`.local` overwrites options of `.conf` for config-files 
   included with before/after)
+* `action.d/abuseipdb.conf`: switched to use AbuseIPDB API v2 (gh-2302)
+* `action.d/badips.py`: fixed start of banaction on demand (which may be IP-family related), gh-2390
+* `action.d/helpers-common.conf`: rewritten grep arguments, now options `-wF` used to match only
+  whole words and fixed string (not as pattern), gh-2298
 * `filter.d/sshd.conf`:
+  - matches `Bad protocol version identification` in `ddos` and `aggressive` modes (gh-2404).
   - captures `Disconnecting ...: Change of username or service not allowed` (gh-2239, gh-2279)
   - captures `Disconnected from ... [preauth]` (`extra`/`aggressive` mode and preauth phase only, gh-2239, gh-2279)
 * `filter.d/mysqld-auth.conf`: 
   - MYSQL 8.0.13 compatibility (log-error-verbosity = 3), log-format contains few additional words
     enclosed in brackets after "[Note]" (gh-2314)
+* `filter.d/sendmail-reject.conf`:
+  - `mode=extra` now captures port IDs of `TLSMTA` and `MSA` (defaults for ports 465 and 587 on some distros)
 * `files/fail2ban.service.in`: fixed systemd-unit template - missing nftables dependency (gh-2313)
 * several `action.d/mail*`: fixed usage with multiple log files (ultimate fix for gh-976, gh-2341)
+* `filter.d/sendmail-reject.conf`: fixed journal usage for some systems (e. g. CentOS): if only identifier 
+  set to `sm-mta` (no unit `sendmail`) for some messages (gh-2385)
+* `filter.d/asterisk.conf`: asterisk can log additional timestamp if logs into systemd-journal
+  (regex extended with optional part matching this, gh-2383)
+* `filter.d/postfix.conf`:
+    - regexp's accept variable suffix code in status of postfix for precise messages (gh-2442)
+    - extended with new postfix filter mode `errors` to match "too many errors" (gh-2439),
+      also included within modes `normal`, `more` (`extra` and `aggressive`), since postfix
+      parameter `smtpd_hard_error_limit` is default 20 (additionally consider `maxretry`)
+* `filter.d/named-refused.conf`:
+    - support BIND 9.11.0 log format (includes an additional field @0xXXX..., gh-2406);
+    - `prefregex` extended, more selective now (denied/NOTAUTH suffix moved from failregex, so no catch-all there anymore)
 
 ### New Features
 * new failregex-flag tag `<F-MLFGAINED>` for failregex, signaled that the access to service was gained
   (ATM used similar to tag `<F-NOFAIL>`, but it does not add the log-line to matches, gh-2279)
+* filters: introduced new configuration parameter `logtype` (default `file` for file-backends, and 
+  `journal` for journal-backends, gh-2387); can be also set to `rfc5424` to force filters (which include common.conf)
+  to use RFC 5424 conform prefix-line per default (gh-2467);
+* for better performance and safety the option `logtype` can be also used to
+  select short prefix-line for file-backends too for all filters using `__prefix_line` (`common.conf`),
+  if message logged only with `hostname svc[nnnn]` prefix (often the case on several systems):
+```ini
+[jail]
+backend = auto
+filter = flt[logtype=short]
+```
+* `filter.d/common.conf`: differentiate `__prefix_line` for file/journal logtype's (speedup and fix parsing
+  of systemd-journal);
 * `filter.d/traefik-auth.conf`: used to ban hosts, that were failed through traefik
+* `filter.d/znc-adminlog.conf`: new filter for ZNC (IRC bouncer); requires the adminlog module to be loaded
 
 ### Enhancements
+* introduced new options: `dbmaxmatches` (fail2ban.conf) and `maxmatches` (jail.conf) to contol
+  how many matches per ticket fail2ban can hold in memory and store in database (gh-2402, gh-2118);
 * fail2ban.conf: introduced new section `[Thread]` and option `stacksize` to configure default size
   of the stack for threads running in fail2ban (gh-2356), it could be set in `fail2ban.local` to
   avoid runtime error "can't start new thread" (see gh-969);
@@ -97,6 +141,9 @@ ver. 0.10.5-dev-1 (20??/??/??) - development edition
 * `action.d/badips.py`: option `loglevel` extended with level of summary message,
   following example configuration logging summary with NOTICE and rest with DEBUG log-levels:
   `action = badips.py[loglevel="debug, notice"]`
+* samplestestcase.py (testSampleRegexsFactory) extended:
+  - allow coverage of journal logtype;
+  - new option `fileOptions` to set common filter/test options for whole test-file;
 
 
 ver. 0.10.4 (2018/10/04) - ten-four-on-due-date-ten-four

@@ -25,6 +25,7 @@ __license__ = "GPL"
 
 import os
 import sys
+import unittest
 
 from ..client import fail2banregex
 from ..client.fail2banregex import Fail2banRegex, get_opt_parser, exec_command_line, output, str2LogLevel
@@ -119,7 +120,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testDirectFound(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--print-all-matched", "--print-no-missed",
 			"Dec 31 11:59:59 [sshd] error: PAM: Authentication failure for kevin from 192.0.2.0",
 			r"Authentication failure for .*? from <HOST>$"
@@ -148,7 +149,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testDirectRE_1(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--print-all-matched",
 			Fail2banRegexTest.FILENAME_01, 
 			Fail2banRegexTest.RE_00
@@ -164,7 +165,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testDirectRE_1raw(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--print-all-matched", "--raw",
 			Fail2banRegexTest.FILENAME_01, 
 			Fail2banRegexTest.RE_00
@@ -174,7 +175,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testDirectRE_1raw_noDns(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--print-all-matched", "--raw", "--usedns=no",
 			Fail2banRegexTest.FILENAME_01, 
 			Fail2banRegexTest.RE_00
@@ -184,7 +185,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testDirectRE_2(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--print-all-matched",
 			Fail2banRegexTest.FILENAME_02, 
 			Fail2banRegexTest.RE_00
@@ -194,7 +195,7 @@ class Fail2banRegexTest(LogCaptureTestCase):
 
 	def testVerbose(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--timezone", "UTC+0200",
 			"--verbose", "--verbose-date", "--print-no-missed",
 			Fail2banRegexTest.FILENAME_02, 
@@ -217,6 +218,18 @@ class Fail2banRegexTest(LogCaptureTestCase):
 		# test failure line and not-failure lines both presents:
 		self.assertLogged("[29116]: User root not allowed because account is locked",
 			"[29116]: Received disconnect from 1.2.3.4", all=True)
+		self.pruneLog()
+		# show real options:
+		(opts, args, fail2banRegex) = _Fail2banRegex(
+			"-l", "notice", # put down log-level, because of too many debug-messages
+			"-vv", "-c", CONFIG_DIR,
+			"Dec 31 11:59:59 [sshd] error: PAM: Authentication failure for kevin from 192.0.2.1",
+			"sshd[logtype=short]"
+		)
+		self.assertTrue(fail2banRegex.start(args))
+		# tet logtype is specified and set in real options:
+		self.assertLogged("Real  filter options :", "'logtype': 'short'", all=True)
+		self.assertNotLogged("'logtype': 'file'", "'logtype': 'journal'", all=True)
 
 	def testFastSshd(self):
 		(opts, args, fail2banRegex) = _Fail2banRegex(
@@ -315,10 +328,11 @@ class Fail2banRegexTest(LogCaptureTestCase):
 		_decode_line_warn.clear()
 
 	def testWronChar(self):
+		unittest.F2B.SkipIfCfgMissing(stock=True)
 		self._reset()
 		(opts, args, fail2banRegex) = _Fail2banRegex(
 			"-l", "notice", # put down log-level, because of too many debug-messages
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			Fail2banRegexTest.FILENAME_WRONGCHAR, Fail2banRegexTest.FILTER_SSHD
 		)
 		self.assertTrue(fail2banRegex.start(args))
@@ -331,10 +345,11 @@ class Fail2banRegexTest(LogCaptureTestCase):
 		self.assertLogged('Nov  8 00:16:12 main sshd[32547]: pam_succeed_if(sshd:auth): error retrieving information about user llinco')
 
 	def testWronCharDebuggex(self):
+		unittest.F2B.SkipIfCfgMissing(stock=True)
 		self._reset()
 		(opts, args, fail2banRegex) = _Fail2banRegex(
 			"-l", "notice", # put down log-level, because of too many debug-messages
-			"--datepattern", "^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
+			"--datepattern", r"^(?:%a )?%b %d %H:%M:%S(?:\.%f)?(?: %ExY)?",
 			"--debuggex", "--print-all-matched",
 			Fail2banRegexTest.FILENAME_WRONGCHAR, Fail2banRegexTest.FILTER_SSHD,
 			r"llinco[^\\]"
@@ -381,3 +396,27 @@ class Fail2banRegexTest(LogCaptureTestCase):
 			'-v', '-d', '%:%.%-', 'LOG', 'RE'
 		), 0)
 		self.assertLogged('Failed to set datepattern')
+
+	def testLogtypeSystemdJournal(self): # pragma: no cover
+		if not fail2banregex.FilterSystemd:
+			raise unittest.SkipTest('Skip test because no systemd backand available')
+		(opts, args, fail2banRegex) = _Fail2banRegex(
+			"systemd-journal", Fail2banRegexTest.FILTER_ZZZ_GEN
+			  +'[journalmatch="SYSLOG_IDENTIFIER=\x01\x02dummy\x02\x01",'
+				+' failregex="^\x00\x01\x02dummy regex, never match <F-ID>xxx</F-ID>"]'
+		)
+		self.assertTrue(fail2banRegex.start(args))
+		self.assertLogged("'logtype': 'journal'")
+		self.assertNotLogged("'logtype': 'file'")
+		self.assertLogged('Lines: 0 lines, 0 ignored, 0 matched, 0 missed')
+		self.pruneLog()
+		# logtype specified explicitly (should win in filter):
+		(opts, args, fail2banRegex) = _Fail2banRegex(
+			"systemd-journal", Fail2banRegexTest.FILTER_ZZZ_GEN
+			  +'[logtype=file,'
+			  +' journalmatch="SYSLOG_IDENTIFIER=\x01\x02dummy\x02\x01",'
+				+' failregex="^\x00\x01\x02dummy regex, never match <F-ID>xxx</F-ID>"]'
+		)
+		self.assertTrue(fail2banRegex.start(args))
+		self.assertLogged("'logtype': 'file'")
+		self.assertNotLogged("'logtype': 'journal'")

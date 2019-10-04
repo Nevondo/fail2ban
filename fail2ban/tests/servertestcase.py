@@ -197,6 +197,8 @@ class Transmitter(TransmitterBase):
 		self.setGetTest("dbfile", tmpFilename)
 		# the same file name (again no jails / not changed):
 		self.setGetTest("dbfile", tmpFilename)
+		self.setGetTest("dbmaxmatches", "100", 100)
+		self.setGetTestNOK("dbmaxmatches", "LIZARD")
 		self.setGetTest("dbpurgeage", "600", 600)
 		self.setGetTestNOK("dbpurgeage", "LIZARD")
 		# the same file name (again with jails / not changed):
@@ -210,6 +212,12 @@ class Transmitter(TransmitterBase):
 			(0, None))
 		self.assertEqual(self.transm.proceed(
 			["get", "dbfile"]),
+			(0, None))
+		self.assertEqual(self.transm.proceed(
+			["set", "dbmaxmatches", "100"]),
+			(0, None))
+		self.assertEqual(self.transm.proceed(
+			["get", "dbmaxmatches"]),
 			(0, None))
 		self.assertEqual(self.transm.proceed(
 			["set", "dbpurgeage", "500"]),
@@ -417,6 +425,12 @@ class Transmitter(TransmitterBase):
 			outList=["192.168.0.1"])
 		_getBanListTest(jail, unbanip="192.168.0.1",
 			outList=[])
+
+	def testJailMaxMatches(self):
+		self.setGetTest("maxmatches", "5", 5, jail=self.jailName)
+		self.setGetTest("maxmatches", "2", 2, jail=self.jailName)
+		self.setGetTest("maxmatches", "-2", -2, jail=self.jailName)
+		self.setGetTestNOK("maxmatches", "Duck", jail=self.jailName)
 
 	def testJailMaxRetry(self):
 		self.setGetTest("maxretry", "5", 5, jail=self.jailName)
@@ -1056,28 +1070,28 @@ class RegexTests(unittest.TestCase):
 	def testHost(self):
 		self.assertRaises(RegexException, FailRegex, '')
 		self.assertRaises(RegexException, FailRegex, '^test no group$')
-		self.assertTrue(FailRegex('^test <HOST> group$'))
-		self.assertTrue(FailRegex('^test <IP4> group$'))
-		self.assertTrue(FailRegex('^test <IP6> group$'))
-		self.assertTrue(FailRegex('^test <DNS> group$'))
-		self.assertTrue(FailRegex('^test id group: ip:port = <F-ID><IP4>(?::<F-PORT/>)?</F-ID>$'))
-		self.assertTrue(FailRegex('^test id group: user:\(<F-ID>[^\)]+</F-ID>\)$'))
-		self.assertTrue(FailRegex('^test id group: anything = <F-ID/>$'))
+		self.assertTrue(FailRegex(r'^test <HOST> group$'))
+		self.assertTrue(FailRegex(r'^test <IP4> group$'))
+		self.assertTrue(FailRegex(r'^test <IP6> group$'))
+		self.assertTrue(FailRegex(r'^test <DNS> group$'))
+		self.assertTrue(FailRegex(r'^test id group: ip:port = <F-ID><IP4>(?::<F-PORT/>)?</F-ID>$'))
+		self.assertTrue(FailRegex(r'^test id group: user:\(<F-ID>[^\)]+</F-ID>\)$'))
+		self.assertTrue(FailRegex(r'^test id group: anything = <F-ID/>$'))
 		# Testing obscure case when host group might be missing in the matched pattern,
 		# e.g. if we made it optional.
-		fr = FailRegex('%%<HOST>?')
+		fr = FailRegex(r'%%<HOST>?')
 		self.assertFalse(fr.hasMatched())
 		fr.search([('%%',"","")])
 		self.assertTrue(fr.hasMatched())
 		self.assertRaises(RegexException, fr.getHost)
 		# The same as above but using separated IPv4/IPv6 expressions
-		fr = FailRegex('%%inet(?:=<F-IP4/>|inet6=<F-IP6/>)?')
+		fr = FailRegex(r'%%inet(?:=<F-IP4/>|inet6=<F-IP6/>)?')
 		self.assertFalse(fr.hasMatched())
 		fr.search([('%%inet=test',"","")])
 		self.assertTrue(fr.hasMatched())
 		self.assertRaises(RegexException, fr.getHost)
 		# Success case: using separated IPv4/IPv6 expressions (no HOST)
-		fr = FailRegex('%%(?:inet(?:=<IP4>|6=<IP6>)?|dns=<DNS>?)')
+		fr = FailRegex(r'%%(?:inet(?:=<IP4>|6=<IP6>)?|dns=<DNS>?)')
 		self.assertFalse(fr.hasMatched())
 		fr.search([('%%inet=192.0.2.1',"","")])
 		self.assertTrue(fr.hasMatched())
@@ -1089,7 +1103,7 @@ class RegexTests(unittest.TestCase):
 		self.assertTrue(fr.hasMatched())
 		self.assertEqual(fr.getHost(), 'example.com')
 		# Success case: using user as failure-id
-		fr = FailRegex('^test id group: user:\(<F-ID>[^\)]+</F-ID>\)$')
+		fr = FailRegex(r'^test id group: user:\(<F-ID>[^\)]+</F-ID>\)$')
 		self.assertFalse(fr.hasMatched())
 		fr.search([('test id group: user:(test login name)',"","")])
 		self.assertTrue(fr.hasMatched())
@@ -1924,12 +1938,19 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 
 	def _executeMailCmd(self, realCmd, timeout=60):
 		# replace pipe to mail with pipe to cat:
-		realCmd = re.sub(r'\)\s*\|\s*mail\b([^\n]*)',
-			r') | cat; printf "\\n... | "; echo mail \1', realCmd)
+		cmd = realCmd
+		if isinstance(realCmd, list):
+			cmd = realCmd[0]
+		cmd = re.sub(r'\)\s*\|\s*(\S*mail\b[^\n]*)',
+			r') | cat; printf "\\n... | "; echo \1', cmd)
 		# replace abuse retrieving (possible no-network), just replace first occurrence of 'dig...':
-		realCmd = re.sub(r'\bADDRESSES=\$\(dig\s[^\n]+',
+		cmd = re.sub(r'\bADDRESSES=\$\(dig\s[^\n]+',
 			lambda m: 'ADDRESSES="abuse-1@abuse-test-server, abuse-2@abuse-test-server"',
-				realCmd, 1)
+				cmd, 1)
+		if isinstance(realCmd, list):
+			realCmd[0] = cmd
+		else:
+			realCmd = cmd
 		# execute action:
 		return _actions.CommandAction.executeCmd(realCmd, timeout=timeout)
 
@@ -1949,6 +1970,26 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 				'ip4-ban': (
 					'The IP 87.142.124.10 has just been banned by Fail2Ban after',
 					'100 attempts against j-mail-whois-lines.',
+					'Here is more information about 87.142.124.10 :',
+					'-- information about 87.142.124.10 --',
+					'Lines containing failures of 87.142.124.10 (max 2)',
+					'testcase01.log:Dec 31 11:59:59 [sshd] error: PAM: Authentication failure for kevin from 87.142.124.10',
+					'testcase01a.log:Dec 31 11:55:01 [sshd] error: PAM: Authentication failure for test from 87.142.124.10',
+				),
+			}),
+			# sendmail-whois-lines --
+			('j-sendmail-whois-lines', 
+				'sendmail-whois-lines['
+				  '''name=%(__name__)s, grepopts="-m 1", grepmax=2, mailcmd='testmail -f "<sender>" "<dest>"', ''' +
+					# 2 logs to test grep from multiple logs:
+				  'logpath="' + os.path.join(TEST_FILES_DIR, "testcase01.log") + '\n' +
+			    '         ' + os.path.join(TEST_FILES_DIR, "testcase01a.log") + '", '
+				  '_whois_command="echo \'-- information about <ip> --\'"'
+				  ']',
+			{
+				'ip4-ban': (
+					'The IP 87.142.124.10 has just been banned by Fail2Ban after',
+					'100 attempts against j-sendmail-whois-lines.',
 					'Here is more information about 87.142.124.10 :',
 					'-- information about 87.142.124.10 --',
 					'Lines containing failures of 87.142.124.10 (max 2)',
@@ -1982,6 +2023,31 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					'Lines containing failures of 2001:db8::1 (max 2)',
 					# both abuse mails should be separated with space:
 					'mail -s Hostname: test-host, family: inet6 - Abuse from 2001:db8::1 abuse-1@abuse-test-server abuse-2@abuse-test-server',
+				),
+			}),
+			# xarf-login-attack --
+			('j-xarf-abuse', 
+				'xarf-login-attack['
+				  'name=%(__name__)s, mailcmd="mail", mailargs="",' +
+				  # test reverse ip:
+				  'debug=1' +
+				  ']',
+			{
+				'ip4-ban': (
+					# test reverse ip:
+					'try to resolve 10.124.142.87.abuse-contacts.abusix.org',
+					'We have detected abuse from the IP address 87.142.124.10',
+					'Dec 31 11:59:59 [sshd] error: PAM: Authentication failure for kevin from 87.142.124.10',
+					'Dec 31 11:55:01 [sshd] error: PAM: Authentication failure for test from 87.142.124.10',
+					# both abuse mails should be separated with space:
+					'mail abuse-1@abuse-test-server abuse-2@abuse-test-server',
+				),
+				'ip6-ban': (
+					# test reverse ip:
+					'try to resolve 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.abuse-contacts.abusix.org',
+					'We have detected abuse from the IP address 2001:db8::1',
+					# both abuse mails should be separated with space:
+					'mail abuse-1@abuse-test-server abuse-2@abuse-test-server',
 				),
 			}),
 		)
@@ -2021,6 +2087,10 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					self.pruneLog('# === %s ===' % test)
 					ticket = BanTicket(ip)
 					ticket.setAttempt(100)
+					ticket.setMatches([
+						'Dec 31 11:59:59 [sshd] error: PAM: Authentication failure for kevin from 87.142.124.10',
+						'Dec 31 11:55:01 [sshd] error: PAM: Authentication failure for test from 87.142.124.10'
+					])
 					ticket = _actions.Actions.ActionInfo(ticket, dmyjail)
 					action.ban(ticket)
 					self.assertLogged(*tests[test], all=True)

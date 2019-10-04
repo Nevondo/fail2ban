@@ -86,10 +86,14 @@ class FilterSystemd(JournalFilter): # pragma: systemd no cover
 				files.extend(glob.glob(p))
 			args['files'] = list(set(files))
 
+		# Default flags is SYSTEM_ONLY(4). This would lead to ignore user session files,
+		# so can prevent "Too many open files" errors on a lot of user sessions (see gh-2392):
 		try:
 			args['flags'] = int(kwargs.pop('journalflags'))
 		except KeyError:
-			pass
+			# be sure all journal types will be opened if files specified (don't set flags):
+			if 'files' not in args or not len(args['files']):
+				args['flags'] = 4
 
 		return args
 
@@ -200,7 +204,14 @@ class FilterSystemd(JournalFilter): # pragma: systemd no cover
 			if not v:
 				v = logentry.get('_PID')
 			if v:
-				logelements[-1] += ("[%i]" % v)
+				try: # [integer] (if already numeric):
+					v = "[%i]" % v
+				except TypeError:
+					try: # as [integer] (try to convert to int):
+						v = "[%i]" % int(v, 0)
+					except (TypeError, ValueError): # fallback - [string] as it is
+						v = "[%s]" % v
+				logelements[-1] += v
 			logelements[-1] += ":"
 			if logelements[-1] == "kernel:":
 				if '_SOURCE_MONOTONIC_TIMESTAMP' in logentry:
@@ -221,7 +232,7 @@ class FilterSystemd(JournalFilter): # pragma: systemd no cover
 		logSys.log(5, "[%s] Read systemd journal entry: %s %s", self.jailName,
 			date.isoformat(), logline)
 		## use the same type for 1st argument:
-		return ((logline[:0], date.isoformat(), logline),
+		return ((logline[:0], date.isoformat(), logline.replace('\n', '\\n')),
 			time.mktime(date.timetuple()) + date.microsecond/1.0E6)
 
 	def seekToTime(self, date):

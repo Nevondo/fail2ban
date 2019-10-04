@@ -82,6 +82,10 @@ class Actions(JailThread, Mapping):
 		self._actions = OrderedDict()
 		## The ban manager.
 		self.__banManager = BanManager()
+		## Precedence of ban (over unban), so max number of tickets banned (to call an unban check):
+		self.banPrecedence = 10
+		## Max count of outdated tickets to unban per each __checkUnBan operation:
+		self.unbanMaxCount = self.banPrecedence * 2
 
 	@staticmethod
 	def _load_python_module(pythonModule):
@@ -307,6 +311,7 @@ class Actions(JailThread, Mapping):
 		bool
 			True when the thread exits nicely.
 		"""
+		cnt = 0
 		for name, action in self._actions.iteritems():
 			try:
 				action.start()
@@ -321,8 +326,16 @@ class Actions(JailThread, Mapping):
 					lambda: False, self.sleeptime)
 				logSys.debug("Actions: leave idle mode")
 				continue
-			if not Utils.wait_for(lambda: not self.active or self.__checkBan(), self.sleeptime):
-				self.__checkUnBan()
+			# wait for ban (stop if gets inactive):
+			bancnt = Utils.wait_for(lambda: not self.active or self.__checkBan(), self.sleeptime)
+			cnt += bancnt
+			# unban if nothing is banned not later than banned tickets >= banPrecedence
+			if not bancnt or cnt >= self.banPrecedence:
+				if self.active:
+					# let shrink the ban list faster
+					bancnt *= 2
+					self.__checkUnBan(bancnt if bancnt and bancnt < self.unbanMaxCount else self.unbanMaxCount)
+				cnt = 0
 		
 		self.__flushBan()
 		self.stopActions()
@@ -371,7 +384,7 @@ class Actions(JailThread, Mapping):
 		def _getBanTime(self):
 			btime = self.__ticket.getBanTime()
 			if btime is None: btime = self.__jail.actions.getBanTime()
-			return btime
+			return int(btime)
 
 		def _mi4ip(self, overalljails=False):
 			"""Gets bans merged once, a helper for lambda(s), prevents stop of executing action by any exception inside.
@@ -443,7 +456,7 @@ class Actions(JailThread, Mapping):
 		"""
 		cnt = 0
 		if not tickets:
-			tickets = self.__getFailTickets()
+			tickets = self.__getFailTickets(self.banPrecedence)
 		for ticket in tickets:
 
 			bTicket = BanTicket.wrap(ticket)
@@ -517,12 +530,12 @@ class Actions(JailThread, Mapping):
 					self._jail.name, name, aInfo, e,
 					exc_info=logSys.getEffectiveLevel()<=logging.DEBUG)
 
-	def __checkUnBan(self):
+	def __checkUnBan(self, maxCount=None):
 		"""Check for IP address to unban.
 
 		Unban IP addresses which are outdated.
 		"""
-		lst = self.__banManager.unBanList(MyTime.time())
+		lst = self.__banManager.unBanList(MyTime.time(), maxCount)
 		for ticket in lst:
 			self.__unBan(ticket)
 		cnt = len(lst)
