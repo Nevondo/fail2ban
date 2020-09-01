@@ -796,7 +796,7 @@ class Transmitter(TransmitterBase):
 		self.assertSortedEqual(
 			self.transm.proceed(["get", self.jailName, "actionmethods",
 				action])[1],
-			['ban', 'start', 'stop', 'testmethod', 'unban'])
+			['ban', 'reban', 'start', 'stop', 'testmethod', 'unban'])
 		self.assertEqual(
 			self.transm.proceed(["set", self.jailName, "action", action,
 				"testmethod", '{"text": "world!"}']),
@@ -1108,6 +1108,34 @@ class RegexTests(unittest.TestCase):
 		fr.search([('test id group: user:(test login name)',"","")])
 		self.assertTrue(fr.hasMatched())
 		self.assertEqual(fr.getFailID(), 'test login name')
+		# Success case: subnet with IPAddr (IP and subnet) conversion:
+		fr = FailRegex(r'%%net=<SUBNET>')
+		fr.search([('%%net=192.0.2.1',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('192.0.2.1', 'inet4'))
+		fr.search([('%%net=192.0.2.1/24',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('192.0.2.0/24', 'inet4'))
+		fr.search([('%%net=2001:DB8:FF:FF::1',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('2001:db8:ff:ff::1', 'inet6'))
+		fr.search([('%%net=2001:DB8:FF:FF::1/60',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('2001:db8:ff:f0::/60', 'inet6'))
+		# CIDR:
+		fr = FailRegex(r'%%ip="<ADDR>", mask="<CIDR>?"')
+		fr.search([('%%ip="192.0.2.2", mask=""',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('192.0.2.2', 'inet4'))
+		fr.search([('%%ip="192.0.2.2", mask="24"',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('192.0.2.0/24', 'inet4'))
+		fr.search([('%%ip="2001:DB8:2FF:FF::1", mask=""',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('2001:db8:2ff:ff::1', 'inet6'))
+		fr.search([('%%ip="2001:DB8:2FF:FF::1", mask="60"',"","")])
+		ip = fr.getIP()
+		self.assertEqual((ip, ip.familyStr), ('2001:db8:2ff:f0::/60', 'inet6'))
 
 
 class _BadThread(JailThread):
@@ -1321,6 +1349,101 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 		#   'start', 'stop' - should be found (logged) on action start/stop,
 		#   etc.
 		testJailsActions = (
+			# nftables-multiport --
+			('j-w-nft-mp', 'nftables-multiport[name=%(__name__)s, port="http,https", protocol="tcp,udp,sctp"]', {
+				'ip4': ('ip ', 'ipv4_addr', 'addr-'), 'ip6': ('ip6 ', 'ipv6_addr', 'addr6-'),
+				'*-start': (
+					r"`nft add table inet f2b-table`",
+					r"`nft -- add chain inet f2b-table f2b-chain \{ type filter hook input priority -1 \; \}`",
+					# iterator over protocol is same for both families:
+					r"`for proto in $(echo 'tcp,udp,sctp' | sed 's/,/ /g'); do`",
+					r"`done`",
+				),
+				'ip4-start': (
+					r"`nft add set inet f2b-table addr-set-j-w-nft-mp \{ type ipv4_addr\; \}`",
+					r"`nft add rule inet f2b-table f2b-chain $proto dport \{ $(echo 'http,https' | sed s/:/-/g) \} ip saddr @addr-set-j-w-nft-mp reject`",
+				), 
+				'ip6-start': (
+					r"`nft add set inet f2b-table addr6-set-j-w-nft-mp \{ type ipv6_addr\; \}`",
+					r"`nft add rule inet f2b-table f2b-chain $proto dport \{ $(echo 'http,https' | sed s/:/-/g) \} ip6 saddr @addr6-set-j-w-nft-mp reject`",
+				),
+				'flush': (
+					"`{ nft flush set inet f2b-table addr-set-j-w-nft-mp 2> /dev/null; } || ",
+					"`{ nft flush set inet f2b-table addr6-set-j-w-nft-mp 2> /dev/null; } || ",
+				),
+				'stop': (
+					"`{ nft -a list chain inet f2b-table f2b-chain | grep -oP '@addr-set-j-w-nft-mp\s+.*\s+\Khandle\s+(\d+)$'; } | while read -r hdl; do`",
+					"`nft delete rule inet f2b-table f2b-chain $hdl; done`",
+					"`nft delete set inet f2b-table addr-set-j-w-nft-mp`",
+					"`{ nft -a list chain inet f2b-table f2b-chain | grep -oP '@addr6-set-j-w-nft-mp\s+.*\s+\Khandle\s+(\d+)$'; } | while read -r hdl; do`",
+					"`nft delete rule inet f2b-table f2b-chain $hdl; done`",
+					"`nft delete set inet f2b-table addr6-set-j-w-nft-mp`",
+				),
+				'ip4-check': (
+					r"`nft list chain inet f2b-table f2b-chain | grep -q '@addr-set-j-w-nft-mp[ \t]'`",
+				),
+				'ip6-check': (
+					r"`nft list chain inet f2b-table f2b-chain | grep -q '@addr6-set-j-w-nft-mp[ \t]'`",
+				),
+				'ip4-ban': (
+					r"`nft add element inet f2b-table addr-set-j-w-nft-mp \{ 192.0.2.1 \}`",
+				),
+				'ip4-unban': (
+					r"`nft delete element inet f2b-table addr-set-j-w-nft-mp \{ 192.0.2.1 \}`",
+				),
+				'ip6-ban': (
+					r"`nft add element inet f2b-table addr6-set-j-w-nft-mp \{ 2001:db8:: \}`",
+				),
+				'ip6-unban': (
+					r"`nft delete element inet f2b-table addr6-set-j-w-nft-mp \{ 2001:db8:: \}`",
+				),					
+			}),
+			# nft-allports --
+			('j-w-nft-ap', 'nftables-allports[name=%(__name__)s, protocol="tcp,udp"]', {
+				'ip4': ('ip ', 'ipv4_addr', 'addr-'), 'ip6': ('ip6 ', 'ipv6_addr', 'addr6-'),
+				'*-start': (
+					r"`nft add table inet f2b-table`",
+					r"`nft -- add chain inet f2b-table f2b-chain \{ type filter hook input priority -1 \; \}`",
+				),
+				'ip4-start': (
+					r"`nft add set inet f2b-table addr-set-j-w-nft-ap \{ type ipv4_addr\; \}`",
+					r"`nft add rule inet f2b-table f2b-chain meta l4proto \{ tcp,udp \} ip saddr @addr-set-j-w-nft-ap reject`",
+				), 
+				'ip6-start': (
+					r"`nft add set inet f2b-table addr6-set-j-w-nft-ap \{ type ipv6_addr\; \}`",
+					r"`nft add rule inet f2b-table f2b-chain meta l4proto \{ tcp,udp \} ip6 saddr @addr6-set-j-w-nft-ap reject`",
+				),
+				'flush': (
+					"`{ nft flush set inet f2b-table addr-set-j-w-nft-ap 2> /dev/null; } || ",
+					"`{ nft flush set inet f2b-table addr6-set-j-w-nft-ap 2> /dev/null; } || ",
+				),
+				'stop': (
+					"`{ nft -a list chain inet f2b-table f2b-chain | grep -oP '@addr-set-j-w-nft-ap\s+.*\s+\Khandle\s+(\d+)$'; } | while read -r hdl; do`",
+					"`nft delete rule inet f2b-table f2b-chain $hdl; done`",
+					"`nft delete set inet f2b-table addr-set-j-w-nft-ap`",
+					"`{ nft -a list chain inet f2b-table f2b-chain | grep -oP '@addr6-set-j-w-nft-ap\s+.*\s+\Khandle\s+(\d+)$'; } | while read -r hdl; do`",
+					"`nft delete rule inet f2b-table f2b-chain $hdl; done`",
+					"`nft delete set inet f2b-table addr6-set-j-w-nft-ap`",
+				),
+				'ip4-check': (
+					r"""`nft list chain inet f2b-table f2b-chain | grep -q '@addr-set-j-w-nft-ap[ \t]'`""",
+				),
+				'ip6-check': (
+					r"""`nft list chain inet f2b-table f2b-chain | grep -q '@addr6-set-j-w-nft-ap[ \t]'`""",
+				),
+				'ip4-ban': (
+					r"`nft add element inet f2b-table addr-set-j-w-nft-ap \{ 192.0.2.1 \}`",
+				),
+				'ip4-unban': (
+					r"`nft delete element inet f2b-table addr-set-j-w-nft-ap \{ 192.0.2.1 \}`",
+				),
+				'ip6-ban': (
+					r"`nft add element inet f2b-table addr6-set-j-w-nft-ap \{ 2001:db8:: \}`",
+				),
+				'ip6-unban': (
+					r"`nft delete element inet f2b-table addr6-set-j-w-nft-ap \{ 2001:db8:: \}`",
+				),					
+			}),
 			# dummy --
 			('j-dummy', 'dummy[name=%(__name__)s, init="==", target="/tmp/fail2ban.dummy"]', {
 				'ip4': ('family: inet4',), 'ip6': ('family: inet6',),
@@ -1451,10 +1574,10 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 				),					
 			}),
 			# iptables-ipset-proto6 --
-			('j-w-iptables-ipset', 'iptables-ipset-proto6[name=%(__name__)s, bantime="10m", default-timeout=0, port="http", protocol="tcp", chain="<known/chain>"]', {
+			('j-w-iptables-ipset', 'iptables-ipset-proto6[name=%(__name__)s, port="http", protocol="tcp", chain="<known/chain>"]', {
 				'ip4': (' f2b-j-w-iptables-ipset ',), 'ip6': (' f2b-j-w-iptables-ipset6 ',),
 				'ip4-start': (
-					"`ipset create f2b-j-w-iptables-ipset hash:ip timeout 0`",
+					"`ipset create f2b-j-w-iptables-ipset hash:ip timeout 0 `",
 					"`iptables -w -I INPUT -p tcp -m multiport --dports http -m set --match-set f2b-j-w-iptables-ipset src -j REJECT --reject-with icmp-port-unreachable`",
 				), 
 				'ip6-start': (
@@ -1474,23 +1597,23 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					"`ipset destroy f2b-j-w-iptables-ipset6`",
 				),
 				'ip4-ban': (
-					r"`ipset add f2b-j-w-iptables-ipset 192.0.2.1 timeout 600 -exist`",
+					r"`ipset add f2b-j-w-iptables-ipset 192.0.2.1 timeout 0 -exist`",
 				),
 				'ip4-unban': (
 					r"`ipset del f2b-j-w-iptables-ipset 192.0.2.1 -exist`",
 				),
 				'ip6-ban': (
-					r"`ipset add f2b-j-w-iptables-ipset6 2001:db8:: timeout 600 -exist`",
+					r"`ipset add f2b-j-w-iptables-ipset6 2001:db8:: timeout 0 -exist`",
 				),
 				'ip6-unban': (
 					r"`ipset del f2b-j-w-iptables-ipset6 2001:db8:: -exist`",
 				),					
 			}),
 			# iptables-ipset-proto6-allports --
-			('j-w-iptables-ipset-ap', 'iptables-ipset-proto6-allports[name=%(__name__)s, bantime="10m", default-timeout=0, chain="<known/chain>"]', {
+			('j-w-iptables-ipset-ap', 'iptables-ipset-proto6-allports[name=%(__name__)s, chain="<known/chain>"]', {
 				'ip4': (' f2b-j-w-iptables-ipset-ap ',), 'ip6': (' f2b-j-w-iptables-ipset-ap6 ',),
 				'ip4-start': (
-					"`ipset create f2b-j-w-iptables-ipset-ap hash:ip timeout 0`",
+					"`ipset create f2b-j-w-iptables-ipset-ap hash:ip timeout 0 `",
 					"`iptables -w -I INPUT -m set --match-set f2b-j-w-iptables-ipset-ap src -j REJECT --reject-with icmp-port-unreachable`",
 				), 
 				'ip6-start': (
@@ -1510,13 +1633,13 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					"`ipset destroy f2b-j-w-iptables-ipset-ap6`",
 				),
 				'ip4-ban': (
-					r"`ipset add f2b-j-w-iptables-ipset-ap 192.0.2.1 timeout 600 -exist`",
+					r"`ipset add f2b-j-w-iptables-ipset-ap 192.0.2.1 timeout 0 -exist`",
 				),
 				'ip4-unban': (
 					r"`ipset del f2b-j-w-iptables-ipset-ap 192.0.2.1 -exist`",
 				),
 				'ip6-ban': (
-					r"`ipset add f2b-j-w-iptables-ipset-ap6 2001:db8:: timeout 600 -exist`",
+					r"`ipset add f2b-j-w-iptables-ipset-ap6 2001:db8:: timeout 0 -exist`",
 				),
 				'ip6-unban': (
 					r"`ipset del f2b-j-w-iptables-ipset-ap6 2001:db8:: -exist`",
@@ -1794,10 +1917,10 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 				),					
 			}),
 			# firewallcmd-ipset (multiport) --
-			('j-w-fwcmd-ipset', 'firewallcmd-ipset[name=%(__name__)s, bantime="10m", default-timeout=0, port="http", protocol="tcp", chain="<known/chain>"]', {
+			('j-w-fwcmd-ipset', 'firewallcmd-ipset[name=%(__name__)s, port="http", protocol="tcp", chain="<known/chain>"]', {
 				'ip4': (' f2b-j-w-fwcmd-ipset ',), 'ip6': (' f2b-j-w-fwcmd-ipset6 ',),
 				'ip4-start': (
-					"`ipset create f2b-j-w-fwcmd-ipset hash:ip timeout 0`",
+					"`ipset create f2b-j-w-fwcmd-ipset hash:ip timeout 0 `",
 					"`firewall-cmd --direct --add-rule ipv4 filter INPUT_direct 0 -p tcp -m multiport --dports http -m set --match-set f2b-j-w-fwcmd-ipset src -j REJECT --reject-with icmp-port-unreachable`",
 				), 
 				'ip6-start': (
@@ -1817,27 +1940,27 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					"`ipset destroy f2b-j-w-fwcmd-ipset6`",
 				),
 				'ip4-ban': (
-					r"`ipset add f2b-j-w-fwcmd-ipset 192.0.2.1 timeout 600 -exist`",
+					r"`ipset add f2b-j-w-fwcmd-ipset 192.0.2.1 timeout 0 -exist`",
 				),
 				'ip4-unban': (
 					r"`ipset del f2b-j-w-fwcmd-ipset 192.0.2.1 -exist`",
 				),
 				'ip6-ban': (
-					r"`ipset add f2b-j-w-fwcmd-ipset6 2001:db8:: timeout 600 -exist`",
+					r"`ipset add f2b-j-w-fwcmd-ipset6 2001:db8:: timeout 0 -exist`",
 				),
 				'ip6-unban': (
 					r"`ipset del f2b-j-w-fwcmd-ipset6 2001:db8:: -exist`",
 				),					
 			}),
 			# firewallcmd-ipset (allports) --
-			('j-w-fwcmd-ipset-ap', 'firewallcmd-ipset[name=%(__name__)s, bantime="10m", actiontype=<allports>, protocol="tcp", chain="<known/chain>"]', {
+			('j-w-fwcmd-ipset-ap', 'firewallcmd-ipset[name=%(__name__)s, actiontype=<allports>, protocol="tcp", chain="<known/chain>"]', {
 				'ip4': (' f2b-j-w-fwcmd-ipset-ap ',), 'ip6': (' f2b-j-w-fwcmd-ipset-ap6 ',),
 				'ip4-start': (
-					"`ipset create f2b-j-w-fwcmd-ipset-ap hash:ip timeout 600`",
+					"`ipset create f2b-j-w-fwcmd-ipset-ap hash:ip timeout 0 `",
 					"`firewall-cmd --direct --add-rule ipv4 filter INPUT_direct 0 -p tcp -m set --match-set f2b-j-w-fwcmd-ipset-ap src -j REJECT --reject-with icmp-port-unreachable`",
 				), 
 				'ip6-start': (
-					"`ipset create f2b-j-w-fwcmd-ipset-ap6 hash:ip timeout 600 family inet6`",
+					"`ipset create f2b-j-w-fwcmd-ipset-ap6 hash:ip timeout 0 family inet6`",
 					"`firewall-cmd --direct --add-rule ipv6 filter INPUT_direct 0 -p tcp -m set --match-set f2b-j-w-fwcmd-ipset-ap6 src -j REJECT --reject-with icmp6-port-unreachable`",
 				),
 				'flush': (
@@ -1853,13 +1976,13 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 					"`ipset destroy f2b-j-w-fwcmd-ipset-ap6`",
 				),
 				'ip4-ban': (
-					r"`ipset add f2b-j-w-fwcmd-ipset-ap 192.0.2.1 timeout 600 -exist`",
+					r"`ipset add f2b-j-w-fwcmd-ipset-ap 192.0.2.1 timeout 0 -exist`",
 				),
 				'ip4-unban': (
 					r"`ipset del f2b-j-w-fwcmd-ipset-ap 192.0.2.1 -exist`",
 				),
 				'ip6-ban': (
-					r"`ipset add f2b-j-w-fwcmd-ipset-ap6 2001:db8:: timeout 600 -exist`",
+					r"`ipset add f2b-j-w-fwcmd-ipset-ap6 2001:db8:: timeout 0 -exist`",
 				),
 				'ip6-unban': (
 					r"`ipset del f2b-j-w-fwcmd-ipset-ap6 2001:db8:: -exist`",
@@ -1905,7 +2028,7 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 				# test ban ip4 :
 				self.pruneLog('# === ban-ipv4 ===')
 				action.ban(aInfos['ipv4'])
-				if tests.get('ip4-start'): self.assertLogged(*tests['ip4-start'], all=True)
+				if tests.get('ip4-start'): self.assertLogged(*tests.get('*-start', ())+tests['ip4-start'], all=True)
 				if tests.get('ip6-start'): self.assertNotLogged(*tests['ip6-start'], all=True)
 				self.assertLogged(*tests.get('ip4-check',())+tests['ip4-ban'], all=True)
 				self.assertNotLogged(*tests['ip6'], all=True)
@@ -1917,7 +2040,7 @@ class ServerConfigReaderTests(LogCaptureTestCase):
 				# test ban ip6 :
 				self.pruneLog('# === ban ipv6 ===')
 				action.ban(aInfos['ipv6'])
-				if tests.get('ip6-start'): self.assertLogged(*tests['ip6-start'], all=True)
+				if tests.get('ip6-start'): self.assertLogged(*tests.get('*-start', ())+tests['ip6-start'], all=True)
 				if tests.get('ip4-start'): self.assertNotLogged(*tests['ip4-start'], all=True)
 				self.assertLogged(*tests.get('ip6-check',())+tests['ip6-ban'], all=True)
 				self.assertNotLogged(*tests['ip4'], all=True)

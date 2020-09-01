@@ -22,6 +22,7 @@ __author__ = "Yaroslav Halchenko"
 __copyright__ = "Copyright (c) 2013 Yaroslav Halchenko"
 __license__ = "GPL"
 
+import fileinput
 import itertools
 import logging
 import optparse
@@ -38,7 +39,7 @@ from cStringIO import StringIO
 from functools import wraps
 
 from ..helpers import getLogger, str2LogLevel, getVerbosityFormat, uni_decode
-from ..server.ipdns import DNSUtils
+from ..server.ipdns import IPAddr, DNSUtils
 from ..server.mytime import MyTime
 from ..server.utils import Utils
 # for action_d.test_smtp :
@@ -330,13 +331,21 @@ def initTests(opts):
 	c.set('2001:db8::ffff', 'test-other')
 	c.set('87.142.124.10', 'test-host')
 	if unittest.F2B.no_network: # pragma: no cover
-		# precache all wrong dns to ip's used in test cases:
+		# precache all ip to dns used in test cases:
+		c.set('192.0.2.888', None)
+		c.set('8.8.4.4', 'dns.google')
+		c.set('8.8.4.4', 'dns.google')
+		# precache all dns to ip's used in test cases:
 		c = DNSUtils.CACHE_nameToIp
 		for i in (
 			('999.999.999.999', set()),
 			('abcdef.abcdef', set()),
 			('192.168.0.', set()),
 			('failed.dns.ch', set()),
+			('doh1.2.3.4.buga.xxxxx.yyy.invalid', set()),
+			('1.2.3.4.buga.xxxxx.yyy.invalid', set()),
+			('example.com', set([IPAddr('2606:2800:220:1:248:1893:25c8:1946'), IPAddr('93.184.216.34')])),
+			('www.example.com', set([IPAddr('2606:2800:220:1:248:1893:25c8:1946'), IPAddr('93.184.216.34')])),
 		):
 			c.set(*i)
 		# if fast - precache all host names as localhost addresses (speed-up getSelfIPs/ignoreself):
@@ -551,7 +560,7 @@ if not hasattr(unittest.TestCase, 'assertDictEqual'):
 			self.fail(msg)
 	unittest.TestCase.assertDictEqual = assertDictEqual
 
-def assertSortedEqual(self, a, b, level=1, nestedOnly=True, key=repr, msg=None):
+def assertSortedEqual(self, a, b, level=1, nestedOnly=False, key=repr, msg=None):
 	"""Compare complex elements (like dict, list or tuple) in sorted order until
 	level 0 not reached (initial level = -1 meant all levels),
 	or if nestedOnly set to True and some of the objects still contains nested lists or dicts.
@@ -561,6 +570,13 @@ def assertSortedEqual(self, a, b, level=1, nestedOnly=True, key=repr, msg=None):
 		if isinstance(v, dict):
 			return any(isinstance(v, (dict, list, tuple)) for v in v.itervalues())
 		return any(isinstance(v, (dict, list, tuple)) for v in v)
+	if nestedOnly:
+		_nest_sorted = sorted
+	else:
+		def _nest_sorted(v, key=key):
+			if isinstance(v, (set, list, tuple)):
+				return sorted(list(_nest_sorted(v, key) for v in v), key=key)
+			return v
 	# level comparison routine:
 	def _assertSortedEqual(a, b, level, nestedOnly, key):
 		# first the lengths:
@@ -579,8 +595,8 @@ def assertSortedEqual(self, a, b, level=1, nestedOnly=True, key=repr, msg=None):
 				elif v1 != v2:
 					raise ValueError('%r != %r' % (a, b))
 		else: # list, tuple, something iterable:
-			a = sorted(a, key=key)
-			b = sorted(b, key=key)
+			a = _nest_sorted(a, key=key)
+			b = _nest_sorted(b, key=key)
 			for v1, v2 in zip(a, b):
 				if isinstance(v1, (dict, list, tuple)) and isinstance(v2, (dict, list, tuple)):
 					_assertSortedEqual(v1, v2, level-1 if level != 0 else 0, nestedOnly, key)
@@ -745,28 +761,25 @@ class LogCaptureTestCase(unittest.TestCase):
 				self._dirty |= 2 # records changed
 
 	def setUp(self):
-
 		# For extended testing of what gets output into logging
 		# system, we will redirect it to a string
-		logSys = getLogger("fail2ban")
-
 		# Keep old settings
 		self._old_level = logSys.level
 		self._old_handlers = logSys.handlers
 		# Let's log everything into a string
 		self._log = LogCaptureTestCase._MemHandler(unittest.F2B.log_lazy)
 		logSys.handlers = [self._log]
-		if self._old_level <= logging.DEBUG:
+		# lowest log level to capture messages (expected in tests) is Lev.9
+		if self._old_level <= logging.DEBUG: # pragma: no cover
 			logSys.handlers += self._old_handlers
-		else: # lowest log level to capture messages
-			logSys.setLevel(logging.DEBUG)
+		if self._old_level > logging.DEBUG-1:
+			logSys.setLevel(logging.DEBUG-1)
 		super(LogCaptureTestCase, self).setUp()
 
 	def tearDown(self):
 		"""Call after every test case."""
 		# print "O: >>%s<<" % self._log.getvalue()
 		self.pruneLog()
-		logSys = getLogger("fail2ban")
 		logSys.handlers = self._old_handlers
 		logSys.level = self._old_level
 		super(LogCaptureTestCase, self).tearDown()
@@ -848,6 +861,16 @@ class LogCaptureTestCase(unittest.TestCase):
 
 	def getLog(self):
 		return self._log.getvalue()
+
+	@staticmethod
+	def dumpFile(fn, handle=logSys.debug):
+		"""Helper which outputs content of the file at HEAVYDEBUG loglevels"""
+		if (handle != logSys.debug or logSys.getEffectiveLevel() <= logging.DEBUG):
+			handle('---- ' + fn + ' ----')
+			for line in fileinput.input(fn):
+				line = line.rstrip('\n')
+				handle(line)
+			handle('-'*30)
 
 
 pid_exists = Utils.pid_exists

@@ -33,7 +33,7 @@ from .configreader import ConfigReaderUnshared, ConfigReader
 from .filterreader import FilterReader
 from .actionreader import ActionReader
 from ..version import version
-from ..helpers import getLogger, extractOptions, splitwords
+from ..helpers import getLogger, extractOptions, splitWithOptions, splitwords
 
 # Gets the instance of the logger.
 logSys = getLogger(__name__)
@@ -149,11 +149,8 @@ class JailReader(ConfigReader):
 				ret = self.__filter.read()
 				if not ret:
 					raise JailDefError("Unable to read the filter %r" % filterName)
-				if not filterOpt.get('logtype'):
-					# overwrite default logtype backend-related (considering that the filter settings may be overwritten):
-					self.__filter.merge_defaults({
-						'logtype': ['file','journal'][int(self.__opts.get('backend', '').startswith("systemd"))]
-					})
+				# set backend-related options (logtype):
+				self.__filter.applyAutoOptions(self.__opts.get('backend', ''))
 				# merge options from filter as 'known/...' (all options unfiltered):
 				self.__filter.getOptions(self.__opts, all=True)
 				ConfigReader.merge_section(self, self.__name, self.__filter.getCombined(), 'known/')
@@ -171,21 +168,15 @@ class JailReader(ConfigReader):
 				self.__filter.getOptions(self.__opts)
 		
 			# Read action
-			prevln = ''
-			actlst = self.__opts["action"].split('\n')
-			for n, act in enumerate(actlst):
+			for act in splitWithOptions(self.__opts["action"]):
 				try:
+					act = act.strip()
 					if not act:			  # skip empty actions
 						continue
 					# join with previous line if needed (consider possible new-line):
-					if prevln: act = prevln + '\n' + act
 					actName, actOpt = extractOptions(act)
 					prevln = ''
 					if not actName:
-						# consider possible new-line, so repeat with joined next line's:
-						if n < len(actlst) - 1:
-							prevln = act
-							continue
 						raise JailDefError("Invalid action definition %r" % act)
 					if actName.endswith(".py"):
 						self.__actions.append([
