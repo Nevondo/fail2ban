@@ -173,6 +173,11 @@ class Transmitter:
 				return self.__server.getSyslogSocket()
 			else:
 				raise Exception("Failed to change syslog socket")
+		elif name == "allowipv6":
+			value = command[1]
+			self.__server.setIPv6IsAllowed(value)
+			if self.__quiet: return
+			return value
 		#Thread
 		elif name == "thread":
 			value = command[1]
@@ -277,7 +282,8 @@ class Transmitter:
 			value = command[2]
 			self.__server.setPrefRegex(name, value)
 			if self.__quiet: return
-			return self.__server.getPrefRegex(name)
+			v = self.__server.getPrefRegex(name)
+			return v.getRegex() if v else ""
 		elif command[1] == "addfailregex":
 			value = command[2]
 			self.__server.addFailRegex(name, value, multiple=multiple)
@@ -452,7 +458,8 @@ class Transmitter:
 		elif command[1] == "ignorecache":
 			return self.__server.getIgnoreCache(name)
 		elif command[1] == "prefregex":
-			return self.__server.getPrefRegex(name)
+			v = self.__server.getPrefRegex(name)
+			return v.getRegex() if v else ""
 		elif command[1] == "failregex":
 			return self.__server.getFailRegex(name)
 		elif command[1] == "ignoreregex":

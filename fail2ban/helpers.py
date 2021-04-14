@@ -224,9 +224,10 @@ def __stopOnIOError(logSys=None, logHndlr=None): # pragma: no cover
 		sys.exit(0)
 
 try:
-    BrokenPipeError
+	BrokenPipeError = BrokenPipeError
 except NameError: # pragma: 3.x no cover
-    BrokenPipeError = IOError
+	BrokenPipeError = IOError
+
 __origLog = logging.Logger._log
 def __safeLog(self, level, msg, args, **kwargs):
 	"""Safe log inject to avoid possible errors by unsafe log-handlers, 
@@ -370,21 +371,27 @@ OPTION_CRE = re.compile(r"^([^\[]+)(?:\[(.*)\])?\s*$", re.DOTALL)
 # since v0.10 separator extended with `]\s*[` for support of multiple option groups, syntax 
 # `action = act[p1=...][p2=...]`
 OPTION_EXTRACT_CRE = re.compile(
-	r'([\w\-_\.]+)=(?:"([^"]*)"|\'([^\']*)\'|([^,\]]*))(?:,|\]\s*\[|$)', re.DOTALL)
+	r'\s*([\w\-_\.]+)=(?:"([^"]*)"|\'([^\']*)\'|([^,\]]*))(?:,|\]\s*\[|$|(?P<wrngA>.+))|,?\s*$|(?P<wrngB>.+)', re.DOTALL)
 # split by new-line considering possible new-lines within options [...]:
 OPTION_SPLIT_CRE = re.compile(
-	r'(?:[^\[\n]+(?:\s*\[\s*(?:[\w\-_\.]+=(?:"[^"]*"|\'[^\']*\'|[^,\]]*)\s*(?:,|\]\s*\[)?\s*)*\])?\s*|[^\n]+)(?=\n\s*|$)', re.DOTALL)
+	r'(?:[^\[\s]+(?:\s*\[\s*(?:[\w\-_\.]+=(?:"[^"]*"|\'[^\']*\'|[^,\]]*)\s*(?:,|\]\s*\[)?\s*)*\])?\s*|\S+)(?=\n\s*|\s+|$)', re.DOTALL)
 
 def extractOptions(option):
 	match = OPTION_CRE.match(option)
 	if not match:
-		# TODO proper error handling
-		return None, None
+		raise ValueError("unexpected option syntax")
 	option_name, optstr = match.groups()
 	option_opts = dict()
 	if optstr:
 		for optmatch in OPTION_EXTRACT_CRE.finditer(optstr):
+			if optmatch.group("wrngA"):
+				raise ValueError("unexpected syntax at %d after option %r: %s" % (
+					optmatch.start("wrngA"), optmatch.group(1), optmatch.group("wrngA")[0:25]))
+			if optmatch.group("wrngB"):
+				raise ValueError("expected option, wrong syntax at %d: %s" % (
+					optmatch.start("wrngB"), optmatch.group("wrngB")[0:25]))
 			opt = optmatch.group(1)
+			if not opt: continue
 			value = [
 				val for val in optmatch.group(2,3,4) if val is not None][0]
 			option_opts[opt.strip()] = value.strip()
